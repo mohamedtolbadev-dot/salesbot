@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE `agents` ADD COLUMN `selectedProductId` VARCHAR(191) NULL;
+
+-- AlterTable
+ALTER TABLE `products` ADD COLUMN `images` TEXT NULL;

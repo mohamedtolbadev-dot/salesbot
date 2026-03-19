@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+// ── المستخدمون (أصحاب المتاجر) ──
+model User {
+  id          String    @id @default(cuid())
+  name        String
+  email       String    @unique
+  password    String
+  phone       String?
+  storeName   String
+  plan        Plan      @default(FREE)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  agent         Agent?
+  products      Product[]
+  conversations Conversation[]
+  customers     Customer[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+// ── خطط الاشتراك ──
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+// ── AI Agent ──
+model Agent {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  name             String   @default("Agent")
+  domain           String   @default("تجارة عامة")
+  style            String   @default("friendly")
+  language         String   @default("darija")
+  isActive         Boolean  @default(true)
+  instructions     String?  @db.Text
+  whatsappPhoneId  String?
+  whatsappToken    String?  @db.Text
+  selectedProductId String? // المنتج المحدد للعمل عليه
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  objectionReplies ObjectionReply[]
+
+  @@map("agents")
+}
+
+// ── ردود الاعتراض ──
+model ObjectionReply {
+  id       String @id @default(cuid())
+  agentId  String
+  trigger  String
+  reply    String @db.Text
+  order    Int    @default(0)
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@map("objection_replies")
+}
+
+// ── المنتجات ──
+model Product {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  price       Float
+  description String?  @db.Text
+  images      String?  @db.Text // JSON array of image URLs
+  isActive    Boolean  @default(true)
+  questions   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("products")
+}
+
+// ── مراحل المحادثة ──
+enum ConversationStage {
+  GREETING
+  DISCOVERY
+  PITCHING
+  OBJECTION
+  CLOSING
+  CLOSED
+  ABANDONED
+}
+
+// ── المحادثات ──
+model Conversation {
+  id           String            @id @default(cuid())
+  userId       String
+  customerId   String
+  stage        ConversationStage @default(GREETING)
+  score        Int               @default(0)
+  isRead       Boolean           @default(false)
+  totalAmount  Float?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [customerId], references: [id])
+  messages Message[]
+
+  @@map("conversations")
+}
+
+// ── الرسائل ──
+enum MessageRole {
+  USER
+  AGENT
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String       @db.Text
+  createdAt      DateTime     @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+// ── الزبائن ──
+enum CustomerTag {
+  NEW
+  REGULAR
+  VIP
+  PROSPECT
+}
+
+model Customer {
+  id          String      @id @default(cuid())
+  userId      String
+  name        String
+  phone       String
+  tag         CustomerTag @default(NEW)
+  totalSpent  Float       @default(0)
+  ordersCount Int         @default(0)
+  lastSeen    DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  @@unique([userId, phone])
+  @@map("customers")
+}
+
+// ── الإشعارات ──
+enum NotificationType {
+  NEW_ORDER
+  OBJECTION_ALERT
+  DAILY_REPORT
+  AGENT_DOWN
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType @default(SYSTEM)
+  title     String
+  message   String           @db.Text
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
