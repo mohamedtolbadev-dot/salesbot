@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { productsAPI } from "@/lib/api"
+import { servicesAPI } from "@/lib/api"
 import { formatAmount } from "@/lib/helpers"
 import { cn } from "@/lib/utils"
 import {
-  Plus, Search, Trash2, ShoppingBag, Eye, EyeOff,
-  Package, Tag, Loader2, ImageIcon, X, Pencil,
+  Plus, Search, Trash2, Wrench, Eye, EyeOff,
+  Clock, Tag, Loader2, ImageIcon, X, Pencil,
   Maximize2, AlertCircle, RefreshCw, ChevronDown,
 } from "lucide-react"
 
@@ -71,7 +71,7 @@ function ImageUploadZone({ images, onUpload, onRemove, uploading }) {
   return (
     <div className="flex flex-col gap-2">
       <label className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5">
-        <ImageIcon size={12} className="text-brand-600" /> صور المنتج
+        <ImageIcon size={12} className="text-brand-600" /> صور الخدمة
       </label>
       <label className="cursor-pointer">
         <input type="file" accept="image/*" multiple onChange={onUpload} disabled={uploading} className="hidden" />
@@ -110,8 +110,8 @@ function FormField({ label, children }) {
 
 const inputCls = "px-3 py-2 bg-card border border-border rounded-lg text-[12px] outline-none focus:border-brand-400 transition-colors duration-200"
 
-/* ─────────────── Product Card ─────────────── */
-function ProductCard({ product, onDetails, onEdit, onToggle, onDelete, delay = 0 }) {
+/* ─────────────── Service Card ─────────────── */
+function ServiceCard({ service, onDetails, onEdit, onToggle, onDelete, delay = 0 }) {
   const [visible, setVisible] = useState(false)
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), delay)
@@ -119,21 +119,30 @@ function ProductCard({ product, onDetails, onEdit, onToggle, onDelete, delay = 0
   }, [delay])
 
   const images = (() => {
-    try { return product.images ? JSON.parse(product.images) : [] }
+    try { return service.images ? JSON.parse(service.images) : [] }
     catch { return [] }
   })()
   const mainImage = images[0] || null
+
+  const formatDuration = (minutes) => {
+    if (minutes >= 60) {
+      const hours = Math.floor(minutes / 60)
+      const mins = minutes % 60
+      return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+    }
+    return `${minutes}د`
+  }
 
   return (
     <div
       className={cn(
         "group bg-card border rounded-xl overflow-hidden transition-all duration-300",
-        product.isActive
+        service.isActive
           ? "border-border hover:border-brand-300 hover:shadow-xl hover:shadow-brand-600/8 hover:-translate-y-0.5"
           : "border-border opacity-60 grayscale"
       )}
       style={{
-        opacity: visible ? (product.isActive ? 1 : 0.6) : 0,
+        opacity: visible ? (service.isActive ? 1 : 0.6) : 0,
         transform: visible ? "translateY(0)" : "translateY(12px)",
         transition: "opacity 0.4s ease, transform 0.4s ease, border-color 0.2s, box-shadow 0.2s",
       }}
@@ -143,23 +152,23 @@ function ProductCard({ product, onDetails, onEdit, onToggle, onDelete, delay = 0
         {mainImage ? (
           <img
             src={mainImage}
-            alt={product.name}
+            alt={service.name}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           />
         ) : (
           <div className="w-10 h-10 rounded-xl bg-border/50 flex items-center justify-center">
-            <ShoppingBag size={18} className="text-muted-foreground/40" />
+            <Wrench size={18} className="text-muted-foreground/40" />
           </div>
         )}
 
         {/* Status badge */}
         <span className={cn(
           "absolute top-2 right-2 text-[9px] font-bold px-1.5 py-0.5 rounded-md border",
-          product.isActive
+          service.isActive
             ? "bg-card text-brand-600 border-brand-200"
             : "bg-card text-muted-foreground border-border"
         )}>
-          {product.isActive ? "نشط" : "معطل"}
+          {service.isActive ? "نشط" : "معطل"}
         </span>
 
         {/* Image count badge */}
@@ -168,17 +177,22 @@ function ProductCard({ product, onDetails, onEdit, onToggle, onDelete, delay = 0
             {images.length}
           </span>
         )}
+
+        {/* Duration badge */}
+        <span className="absolute bottom-2 left-2 text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-brand-600 text-white">
+          <Clock size={9} className="inline ml-0.5" /> {formatDuration(service.duration)}
+        </span>
       </div>
 
       {/* Info */}
       <div className="p-3">
-        <p className="text-[12px] font-bold text-foreground truncate mb-0.5">{product.name}</p>
-        <p className="text-[13px] font-bold text-brand-600 mb-2 tabular-nums">{formatAmount(product.price)}</p>
+        <p className="text-[12px] font-bold text-foreground truncate mb-0.5">{service.name}</p>
+        <p className="text-[13px] font-bold text-brand-600 mb-2 tabular-nums">{formatAmount(service.price)}</p>
 
         {/* Description — desktop only */}
-        {product.description && (
+        {service.description && (
           <p className="hidden sm:block text-[11px] text-muted-foreground line-clamp-2 mb-2.5 leading-relaxed">
-            {product.description}
+            {service.description}
           </p>
         )}
 
@@ -186,15 +200,15 @@ function ProductCard({ product, onDetails, onEdit, onToggle, onDelete, delay = 0
         <div className="flex items-center justify-between pt-2 border-t border-border">
           <div className="flex items-center gap-1">
             <Tag size={10} className="text-muted-foreground" />
-            <span className="text-[10px] text-muted-foreground tabular-nums">{product.questions} سؤال</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">{service.questions} سؤال</span>
           </div>
           <div className="flex items-center">
             {[
-              { icon: Maximize2, onClick: () => onDetails(product), title: "التفاصيل",   hoverCls: "hover:text-brand-600" },
-              { icon: Pencil,    onClick: () => onEdit(product),    title: "تعديل",       hoverCls: "hover:text-foreground" },
-              { icon: product.isActive ? EyeOff : Eye,
-                                 onClick: () => onToggle(product.id), title: "تفعيل/تعطيل", hoverCls: "hover:text-foreground" },
-              { icon: Trash2,    onClick: () => onDelete(product.id), title: "حذف",        hoverCls: "hover:text-red-500" },
+              { icon: Maximize2, onClick: () => onDetails(service), title: "التفاصيل",   hoverCls: "hover:text-brand-600" },
+              { icon: Pencil,    onClick: () => onEdit(service),    title: "تعديل",       hoverCls: "hover:text-foreground" },
+              { icon: service.isActive ? EyeOff : Eye,
+                                 onClick: () => onToggle(service.id), title: "تفعيل/تعطيل", hoverCls: "hover:text-foreground" },
+              { icon: Trash2,    onClick: () => onDelete(service.id), title: "حذف",        hoverCls: "hover:text-red-500" },
             ].map(({ icon: Ico, onClick, title, hoverCls }) => (
               <button
                 key={title}
@@ -213,36 +227,49 @@ function ProductCard({ product, onDetails, onEdit, onToggle, onDelete, delay = 0
 }
 
 /* ─────────────── Details Content ─────────────── */
-function DetailsContent({ product, onClose, onEdit, onLightbox }) {
+function DetailsContent({ service, onClose, onEdit, onLightbox }) {
   const images = (() => {
-    try { return product.images ? JSON.parse(product.images) : [] }
+    try { return service.images ? JSON.parse(service.images) : [] }
     catch { return [] }
   })()
+
+  const formatDuration = (minutes) => {
+    if (minutes >= 60) {
+      const hours = Math.floor(minutes / 60)
+      const mins = minutes % 60
+      return mins > 0 ? `${hours} ساعة ${mins} دقيقة` : `${hours} ساعة`
+    }
+    return `${minutes} دقيقة`
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-lg font-bold text-foreground mb-1">{product.name}</h2>
-        <p className="text-2xl font-bold text-brand-600 tabular-nums">{formatAmount(product.price)}</p>
+        <h2 className="text-lg font-bold text-foreground mb-1">{service.name}</h2>
+        <p className="text-2xl font-bold text-brand-600 tabular-nums">{formatAmount(service.price)}</p>
       </div>
 
       <div className="flex items-center gap-2">
         <span className={cn(
           "text-[10px] font-semibold px-2 py-1 rounded-md border",
-          product.isActive ? "text-brand-600 bg-secondary border-brand-200" : "text-muted-foreground bg-secondary border-border"
+          service.isActive ? "text-brand-600 bg-secondary border-brand-200" : "text-muted-foreground bg-secondary border-border"
         )}>
-          {product.isActive ? "نشط" : "معطل"}
+          {service.isActive ? "نشط" : "معطل"}
         </span>
+        <div className="flex items-center gap-1 text-[11px] text-brand-600 bg-brand-50 border border-brand-200 px-2 py-1 rounded-md">
+          <Clock size={11} />
+          <span>{formatDuration(service.duration)}</span>
+        </div>
         <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
           <Tag size={11} />
-          <span>{product.questions} سؤال</span>
+          <span>{service.questions} سؤال</span>
         </div>
       </div>
 
-      {product.description && (
+      {service.description && (
         <div className="pb-4 border-b border-border">
           <p className="text-[11px] font-semibold text-muted-foreground mb-1.5">الوصف</p>
-          <p className="text-[12px] text-foreground whitespace-pre-wrap leading-relaxed">{product.description}</p>
+          <p className="text-[12px] text-foreground whitespace-pre-wrap leading-relaxed">{service.description}</p>
         </div>
       )}
 
@@ -260,7 +287,7 @@ function DetailsContent({ product, onClose, onEdit, onLightbox }) {
               >
                 <img
                   src={url}
-                  alt={`${product.name} ${idx + 1}`}
+                  alt={`${service.name} ${idx + 1}`}
                   className="w-full h-32 sm:h-44 object-cover group-hover/img:scale-105 transition-transform duration-300"
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors duration-300 flex items-center justify-center">
@@ -277,10 +304,10 @@ function DetailsContent({ product, onClose, onEdit, onLightbox }) {
           إغلاق
         </button>
         <button
-          onClick={() => { onEdit(product); onClose() }}
+          onClick={() => { onEdit(service); onClose() }}
           className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 bg-brand-600 text-white rounded-lg text-[12px] font-semibold hover:bg-brand-800 transition-colors duration-200 shadow-sm"
         >
-          <Pencil size={12} /> تعديل المنتج
+          <Pencil size={12} /> تعديل الخدمة
         </button>
       </div>
     </div>
@@ -290,76 +317,77 @@ function DetailsContent({ product, onClose, onEdit, onLightbox }) {
 /* ════════════════════════════════════════════════
    Main Page
 ════════════════════════════════════════════════ */
-export default function ProductsPage() {
-  const [products, setProducts] = useState([])
+export default function ServicesPage() {
+  const [services, setServices] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState("")
 
   // Add form
   const [showAddForm, setShowAddForm] = useState(false)
-  const [newProduct, setNewProduct] = useState({ name: "", price: "", description: "", images: [] })
+  const [newService, setNewService] = useState({ name: "", price: "", description: "", duration: "60", images: [] })
   const [uploadingImages, setUploadingImages] = useState(false)
-  const [addingProduct, setAddingProduct] = useState(false)
+  const [addingService, setAddingService] = useState(false)
 
   // Edit form
-  const [editingProduct, setEditingProduct] = useState(null)
-  const [editForm, setEditForm] = useState({ name: "", price: "", description: "", images: [] })
+  const [editingService, setEditingService] = useState(null)
+  const [editForm, setEditForm] = useState({ name: "", price: "", description: "", duration: "60", images: [] })
   const [savingEdit, setSavingEdit] = useState(false)
   const [editUploading, setEditUploading] = useState(false)
 
   // Details modal
-  const [detailsProduct, setDetailsProduct] = useState(null)
+  const [detailsService, setDetailsService] = useState(null)
   const [lightboxImage, setLightboxImage] = useState(null)
 
-  useEffect(() => { fetchProducts() }, [])
+  useEffect(() => { fetchServices() }, [])
 
-  async function fetchProducts() {
+  async function fetchServices() {
     try {
       setLoading(true); setError(null)
-      const res = await productsAPI.getAll()
-      setProducts(res.data || [])
+      const res = await servicesAPI.getAll()
+      setServices(res.data || [])
     } catch {
-      setError("فشل في تحميل المنتجات")
+      setError("فشل في تحميل الخدمات")
     } finally {
       setLoading(false)
     }
   }
 
-  const filtered = products.filter(
-    (p) => p.name.includes(search) || p.description?.includes(search)
+  const filtered = services.filter(
+    (s) => s.name.includes(search) || s.description?.includes(search)
   )
 
   const handleToggle = async (id) => {
-    const p = products.find((x) => x.id === id)
-    if (!p) return
+    const s = services.find((x) => x.id === id)
+    if (!s) return
     try {
-      await productsAPI.update(id, { isActive: !p.isActive })
-      setProducts(products.map((x) => x.id === id ? { ...x, isActive: !x.isActive } : x))
+      await servicesAPI.update(id, { isActive: !s.isActive })
+      setServices(services.map((x) => x.id === id ? { ...x, isActive: !x.isActive } : x))
     } catch {}
   }
 
   const handleDelete = async (id) => {
     try {
-      await productsAPI.delete(id)
-      setProducts(products.filter((x) => x.id !== id))
+      await servicesAPI.delete(id)
+      setServices(services.filter((x) => x.id !== id))
     } catch {}
   }
 
   const handleAdd = async () => {
-    if (!newProduct.name || !newProduct.price) return
+    if (!newService.name || !newService.price) return
     try {
-      setAddingProduct(true)
-      const res = await productsAPI.create({
-        name: newProduct.name,
-        price: Number(newProduct.price),
-        description: newProduct.description,
-        images: newProduct.images,
+      setAddingService(true)
+      const res = await servicesAPI.create({
+        name: newService.name,
+        price: Number(newService.price),
+        description: newService.description,
+        duration: Number(newService.duration) || 60,
+        images: newService.images,
       })
-      setProducts([...products, res.data])
-      setNewProduct({ name: "", price: "", description: "", images: [] })
+      setServices([...services, res.data])
+      setNewService({ name: "", price: "", description: "", duration: "60", images: [] })
       setShowAddForm(false)
-    } catch {} finally { setAddingProduct(false) }
+    } catch {} finally { setAddingService(false) }
   }
 
   async function uploadFiles(files, setUploading, onDone) {
@@ -379,29 +407,31 @@ export default function ProductsPage() {
     setUploading(false)
   }
 
-  const startEdit = (product) => {
-    setEditingProduct(product)
+  const startEdit = (service) => {
+    setEditingService(service)
     setEditForm({
-      name: product.name,
-      price: product.price.toString(),
-      description: product.description || "",
-      images: product.images ? JSON.parse(product.images) : [],
+      name: service.name,
+      price: service.price.toString(),
+      description: service.description || "",
+      duration: service.duration?.toString() || "60",
+      images: service.images ? JSON.parse(service.images) : [],
     })
   }
 
   const handleSaveEdit = async () => {
-    if (!editingProduct || !editForm.name || !editForm.price) return
+    if (!editingService || !editForm.name || !editForm.price) return
     try {
       setSavingEdit(true)
-      await productsAPI.update(editingProduct.id, {
+      await servicesAPI.update(editingService.id, {
         name: editForm.name, price: Number(editForm.price),
-        description: editForm.description, images: editForm.images,
+        description: editForm.description, duration: Number(editForm.duration) || 60,
+        images: editForm.images,
       })
-      setProducts(products.map((p) => p.id === editingProduct.id
-        ? { ...p, name: editForm.name, price: Number(editForm.price), description: editForm.description, images: JSON.stringify(editForm.images) }
-        : p
+      setServices(services.map((s) => s.id === editingService.id
+        ? { ...s, name: editForm.name, price: Number(editForm.price), description: editForm.description, duration: Number(editForm.duration) || 60, images: JSON.stringify(editForm.images) }
+        : s
       ))
-      setEditingProduct(null)
+      setEditingService(null)
     } catch {} finally { setSavingEdit(false) }
   }
 
@@ -424,7 +454,7 @@ export default function ProductsPage() {
         <p className="text-sm font-semibold text-foreground">فشل في تحميل البيانات</p>
         <p className="text-xs text-muted-foreground mt-1">{error}</p>
       </div>
-      <button onClick={fetchProducts} className="flex items-center gap-2 text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">
+      <button onClick={fetchServices} className="flex items-center gap-2 text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">
         <RefreshCw size={13} /> إعادة المحاولة
       </button>
     </div>
@@ -437,12 +467,12 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">
-            <Package size={15} className="text-brand-600" />
+            <Wrench size={15} className="text-brand-600" />
           </div>
           <div>
-            <h1 className="text-base font-bold text-foreground tracking-tight">المنتجات</h1>
+            <h1 className="text-base font-bold text-foreground tracking-tight">الخدمات</h1>
             <p className="text-[11px] text-muted-foreground mt-0.5">
-              {products.filter(p => p.isActive).length} منتج نشط
+              {services.filter(s => s.isActive).length} خدمة نشطة
             </p>
           </div>
         </div>
@@ -450,16 +480,16 @@ export default function ProductsPage() {
           onClick={() => setShowAddForm(!showAddForm)}
           className="flex items-center gap-1.5 bg-brand-600 text-white px-3 py-1.5 rounded-lg text-[11px] font-semibold hover:bg-brand-800 transition-colors duration-200 shadow-sm"
         >
-          <Plus size={13} /> منتج جديد
+          <Plus size={13} /> خدمة جديدة
         </button>
       </div>
 
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="إجمالي المنتجات"  value={products.length}                               icon={Package}      badge="الكل"   delay={0}   />
-        <StatCard label="منتجات نشطة"       value={products.filter(p => p.isActive).length}       icon={Eye}          badge="نشط"    delay={80}  />
-        <StatCard label="منتجات معطلة"      value={products.filter(p => !p.isActive).length}      icon={EyeOff}       badge="معطل"   delay={160} />
-        <StatCard label="إجمالي الأسئلة"    value={products.reduce((a, p) => a + (p.questions || 0), 0)} icon={Tag}   badge="سؤال"   delay={240} />
+        <StatCard label="إجمالي الخدمات"  value={services.length}                               icon={Wrench}      badge="الكل"   delay={0}   />
+        <StatCard label="خدمات نشطة"       value={services.filter(s => s.isActive).length}       icon={Eye}          badge="نشط"    delay={80}  />
+        <StatCard label="خدمات معطلة"      value={services.filter(s => !s.isActive).length}      icon={EyeOff}       badge="معطل"   delay={160} />
+        <StatCard label="إجمالي الأسئلة"    value={services.reduce((a, s) => a + (s.questions || 0), 0)} icon={Tag}   badge="سؤال"   delay={240} />
       </div>
 
       {/* ── Add Form ── */}
@@ -470,36 +500,39 @@ export default function ProductsPage() {
               <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center">
                 <Plus size={13} className="text-brand-600" />
               </div>
-              <p className="text-[13px] font-semibold">إضافة منتج جديد</p>
+              <p className="text-[13px] font-semibold">إضافة خدمة جديدة</p>
             </div>
             <button onClick={() => setShowAddForm(false)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
               <X size={15} />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-            <FormField label="اسم المنتج">
-              <input type="text" value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} placeholder="مثال: جلباب زيتوني" className={inputCls} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            <FormField label="اسم الخدمة">
+              <input type="text" value={newService.name} onChange={e => setNewService({ ...newService, name: e.target.value })} placeholder="مثال: جلسة تدليك" className={inputCls} />
             </FormField>
             <FormField label="السعر (درهم)">
-              <input type="number" value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: e.target.value })} placeholder="320" className={inputCls} />
+              <input type="number" value={newService.price} onChange={e => setNewService({ ...newService, price: e.target.value })} placeholder="300" className={inputCls} />
+            </FormField>
+            <FormField label="المدة (دقيقة)">
+              <input type="number" value={newService.duration} onChange={e => setNewService({ ...newService, duration: e.target.value })} placeholder="60" className={inputCls} />
             </FormField>
           </div>
 
           <div className="mb-3">
             <FormField label="الوصف">
-              <textarea value={newProduct.description} onChange={e => setNewProduct({ ...newProduct, description: e.target.value })} placeholder="مواصفات، ألوان، مقاسات..." rows={2} className={cn(inputCls, "resize-none")} />
+              <textarea value={newService.description} onChange={e => setNewService({ ...newService, description: e.target.value })} placeholder="تفاصيل الخدمة، ما يشمله العرض..." rows={2} className={cn(inputCls, "resize-none")} />
             </FormField>
           </div>
 
           <div className="mb-4">
             <ImageUploadZone
-              images={newProduct.images}
+              images={newService.images}
               uploading={uploadingImages}
               onUpload={e => uploadFiles(e.target.files, setUploadingImages, urls =>
-                setNewProduct(p => ({ ...p, images: [...p.images, ...urls] }))
+                setNewService(s => ({ ...s, images: [...s.images, ...urls] }))
               )}
-              onRemove={idx => setNewProduct(p => ({ ...p, images: p.images.filter((_, i) => i !== idx) }))}
+              onRemove={idx => setNewService(s => ({ ...s, images: s.images.filter((_, i) => i !== idx) }))}
             />
           </div>
 
@@ -507,40 +540,43 @@ export default function ProductsPage() {
             <button onClick={() => setShowAddForm(false)} className="px-4 py-2 border border-border rounded-lg text-[12px] font-medium hover:bg-secondary transition-colors duration-200">
               إلغاء
             </button>
-            <button onClick={handleAdd} disabled={addingProduct} className="flex items-center gap-1.5 px-4 py-2 bg-brand-600 text-white rounded-lg text-[12px] font-semibold hover:bg-brand-800 transition-colors duration-200 shadow-sm disabled:opacity-50">
-              {addingProduct ? <><Loader2 size={13} className="animate-spin" />جاري الإضافة...</> : <><Plus size={13} />إضافة المنتج</>}
+            <button onClick={handleAdd} disabled={addingService} className="flex items-center gap-1.5 px-4 py-2 bg-brand-600 text-white rounded-lg text-[12px] font-semibold hover:bg-brand-800 transition-colors duration-200 shadow-sm disabled:opacity-50">
+              {addingService ? <><Loader2 size={13} className="animate-spin" />جاري الإضافة...</> : <><Plus size={13} />إضافة الخدمة</>}
             </button>
           </div>
         </div>
       )}
 
       {/* ── Edit Form ── */}
-      {editingProduct && (
+      {editingService && (
         <div className="bg-card border border-border rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center">
                 <Pencil size={13} className="text-brand-600" />
               </div>
-              <p className="text-[13px] font-semibold">تعديل المنتج</p>
+              <p className="text-[13px] font-semibold">تعديل الخدمة</p>
             </div>
-            <button onClick={() => setEditingProduct(null)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={() => setEditingService(null)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
               <X size={15} />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-            <FormField label="اسم المنتج">
-              <input type="text" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} placeholder="اسم المنتج" className={inputCls} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            <FormField label="اسم الخدمة">
+              <input type="text" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} placeholder="اسم الخدمة" className={inputCls} />
             </FormField>
             <FormField label="السعر (درهم)">
-              <input type="number" value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} placeholder="320" className={inputCls} />
+              <input type="number" value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} placeholder="300" className={inputCls} />
+            </FormField>
+            <FormField label="المدة (دقيقة)">
+              <input type="number" value={editForm.duration} onChange={e => setEditForm({ ...editForm, duration: e.target.value })} placeholder="60" className={inputCls} />
             </FormField>
           </div>
 
           <div className="mb-3">
             <FormField label="الوصف">
-              <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} placeholder="مواصفات، ألوان، مقاسات..." rows={2} className={cn(inputCls, "resize-none")} />
+              <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} placeholder="تفاصيل الخدمة..." rows={2} className={cn(inputCls, "resize-none")} />
             </FormField>
           </div>
 
@@ -556,7 +592,7 @@ export default function ProductsPage() {
           </div>
 
           <div className="flex gap-2 justify-end">
-            <button onClick={() => setEditingProduct(null)} className="px-4 py-2 border border-border rounded-lg text-[12px] font-medium hover:bg-secondary transition-colors duration-200">
+            <button onClick={() => setEditingService(null)} className="px-4 py-2 border border-border rounded-lg text-[12px] font-medium hover:bg-secondary transition-colors duration-200">
               إلغاء
             </button>
             <button onClick={handleSaveEdit} disabled={savingEdit} className="flex items-center gap-1.5 px-4 py-2 bg-brand-600 text-white rounded-lg text-[12px] font-semibold hover:bg-brand-800 transition-colors duration-200 shadow-sm disabled:opacity-50">
@@ -567,9 +603,9 @@ export default function ProductsPage() {
       )}
 
       {/* ── Details Modal ── */}
-      {detailsProduct && (
+      {detailsService && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 animate-in fade-in duration-200" onClick={() => setDetailsProduct(null)} />
+          <div className="absolute inset-0 bg-black/50 animate-in fade-in duration-200" onClick={() => setDetailsService(null)} />
           <div
             className={cn(
               "relative w-full border border-border shadow-2xl overflow-y-auto z-10",
@@ -586,21 +622,21 @@ export default function ProductsPage() {
 
             {/* Mobile header */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border sm:hidden">
-              <p className="text-[13px] font-bold text-foreground truncate">{detailsProduct.name}</p>
-              <button onClick={() => setDetailsProduct(null)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground">
+              <p className="text-[13px] font-bold text-foreground truncate">{detailsService.name}</p>
+              <button onClick={() => setDetailsService(null)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground">
                 <ChevronDown size={18} />
               </button>
             </div>
 
             {/* Desktop close */}
-            <button onClick={() => setDetailsProduct(null)} className="hidden sm:flex absolute top-4 left-4 p-2 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground">
+            <button onClick={() => setDetailsService(null)} className="hidden sm:flex absolute top-4 left-4 p-2 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground">
               <X size={18} />
             </button>
 
             <div className="p-4 sm:p-5">
               <DetailsContent
-                product={detailsProduct}
-                onClose={() => setDetailsProduct(null)}
+                service={detailsService}
+                onClose={() => setDetailsService(null)}
                 onEdit={startEdit}
                 onLightbox={setLightboxImage}
               />
@@ -612,7 +648,7 @@ export default function ProductsPage() {
       {/* ── Lightbox ── */}
       {lightboxImage && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 animate-in fade-in duration-200 px-4"
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/90 animate-in fade-in duration-200 px-4"
           onClick={() => setLightboxImage(null)}
         >
           <button onClick={() => setLightboxImage(null)} className="absolute top-4 right-4 p-2 rounded-full bg-secondary text-brand-600 hover:bg-secondary/80 transition-colors">
@@ -631,27 +667,27 @@ export default function ProductsPage() {
         <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input
           type="text" value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="ابحث عن منتج..."
+          placeholder="ابحث عن خدمة..."
           className="w-full pr-9 pl-3 py-2 bg-card border border-border rounded-lg text-[12px] outline-none focus:border-brand-400 transition-colors duration-200"
         />
       </div>
 
-      {/* ── Products Grid ── */}
+      {/* ── Services Grid ── */}
       {filtered.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-10 text-center">
           <div className="w-11 h-11 rounded-xl bg-secondary flex items-center justify-center mx-auto mb-3">
-            <Package size={20} className="text-brand-600" />
+            <Wrench size={20} className="text-brand-600" />
           </div>
-          <p className="text-[12px] text-muted-foreground">لا توجد منتجات</p>
+          <p className="text-[12px] text-muted-foreground">لا توجد خدمات</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {filtered.map((product, idx) => (
-            <ProductCard
-              key={product.id}
-              product={product}
+          {filtered.map((service, idx) => (
+            <ServiceCard
+              key={service.id}
+              service={service}
               delay={idx * 50}
-              onDetails={setDetailsProduct}
+              onDetails={setDetailsService}
               onEdit={startEdit}
               onToggle={handleToggle}
               onDelete={handleDelete}
@@ -667,7 +703,7 @@ export default function ProductsPage() {
               <Plus size={18} className="text-brand-600" />
             </div>
             <p className="text-[11px] font-semibold text-muted-foreground group-hover:text-brand-600 transition-colors text-center">
-              إضافة منتج جديد
+              إضافة خدمة جديدة
             </p>
           </div>
         </div>

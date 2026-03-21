@@ -2,7 +2,11 @@
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 
-const JWT_SECRET = process.env.JWT_SECRET || "secret"
+const JWT_SECRET = process.env.JWT_SECRET
+
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required")
+}
 
 // تشفير كلمة المرور
 export async function hashPassword(password) {
@@ -19,7 +23,7 @@ export function generateToken(userId) {
   return jwt.sign(
     { userId },
     JWT_SECRET,
-    { expiresIn: "30d" }
+    { expiresIn: "24h" }  // تقليل من 30 يوم إلى 24 ساعة لأمان أفضل
   )
 }
 

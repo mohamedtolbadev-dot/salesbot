@@ -64,6 +64,12 @@ export const authAPI = {
       body: JSON.stringify({ email, password }),
     }),
 
+  googleLogin: (token) =>
+    fetchAPI("/api/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+
   register: (userData) =>
     fetchAPI("/api/auth/register", {
       method: "POST",
@@ -105,6 +111,25 @@ export const productsAPI = {
     }),
 }
 
+// Services APIs
+export const servicesAPI = {
+  getAll: () => fetchAPI("/api/services"),
+  create: (data) =>
+    fetchAPI("/api/services", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id, data) =>
+    fetchAPI(`/api/services/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  delete: (id) =>
+    fetchAPI(`/api/services/${id}`, {
+      method: "DELETE",
+    }),
+}
+
 // Conversations APIs
 export const conversationsAPI = {
   getAll: (params = {}) => {
@@ -120,6 +145,10 @@ export const conversationsAPI = {
     fetchAPI(`/api/conversations/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
+    }),
+  delete: (id) =>
+    fetchAPI(`/api/conversations/${id}`, {
+      method: "DELETE",
     }),
 }
 

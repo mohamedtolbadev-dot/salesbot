@@ -26,7 +26,7 @@
   --muted: 249 20% 96%;
   --muted-foreground: 240 3.8% 46.1%;
   --border: 249 30% 90%;
-  --radius: 0.75rem;
+  --radius: 0.75rem; /* 12px - unified border-radius */
   --modal-surface: #ffffff;
   --brand-primary: #534AB7;
   --brand-vibrant: #534AB7;
@@ -53,30 +53,49 @@
   * {
     border-color: hsl(var(--border));
   }
+
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: var(--font-arabic), system-ui, sans-serif;
+    font-family: var(--font-arabic), "Cairo", system-ui, sans-serif;
+    font-size: 15px;
+    font-feature-settings: "kern" 1, "tnum" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
+
   html {
-    font-family: var(--font-arabic), system-ui, sans-serif;
+    font-family: var(--font-arabic), "IBM Plex Sans Arabic", system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+  }
+
+  p, span, li {
+    line-height: 1.7;
+    font-weight: 400;
+  }
+
+  label, button, input, textarea, select {
+    font-family: inherit;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
+  .tabular-nums,
+  [class*="font-bold"],
+  [class*="font-semibold"] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
   }
 }
 
-/* تحسينات typography للعربية */
-.font-arabic {
-  font-family: var(--font-arabic), "Noto Sans Arabic", system-ui, sans-serif;
-  line-height: 1.6;
-  letter-spacing: 0;
-}
-
-/* تحسينات للعناوين */
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-/* تحسينات للنصوص الصغيرة */
-p, span, div {
-  line-height: 1.6;
-}
+.text-ui-xs    { font-size: 0.75rem;  line-height: 1.5;  font-weight: 500; }  /* 12px */
+.text-ui-sm    { font-size: 0.8125rem; line-height: 1.5;  font-weight: 500; }  /* 13px */
+.text-ui-base  { font-size: 0.9375rem; line-height: 1.55; font-weight: 400; }  /* 15px */
+.text-ui-md    { font-size: 1rem;      line-height: 1.55; font-weight: 400; }   /* 16px */
+.text-ui-label { font-size: 0.75rem;  line-height: 1.4;  font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; } /* 12px */

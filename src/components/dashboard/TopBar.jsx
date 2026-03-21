@@ -1,243 +1,227 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { usePathname } from "next/navigation"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/shared/ThemeToggle"
 import { notificationsAPI } from "@/lib/api"
-import { Bell, Bot, LogOut, Loader2, X, CheckCheck, LayoutDashboard, MessageCircle, BarChart3, ShoppingBag, Users, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  Bell, LogOut, Loader2, X, CheckCheck,
+  LayoutDashboard, MessageCircle, BarChart3,
+  ShoppingBag, Users, Settings,
+  ShoppingCart, AlertTriangle, FileBarChart,
+  WifiOff, Info, Mail,
+} from "lucide-react"
 
-const pageNames = {
-  "/dashboard": { label: "لوحة التحكم", icon: LayoutDashboard },
-  "/dashboard/conversations": { label: "المحادثات", icon: MessageCircle },
-  "/dashboard/analytics": { label: "التحليلات", icon: BarChart3 },
-  "/dashboard/products": { label: "المنتجات", icon: ShoppingBag },
-  "/dashboard/customers": { label: "الزبائن", icon: Users },
-  "/dashboard/settings": { label: "الإعدادات", icon: Settings },
+/* ─────────────── Page map ─────────────── */
+const PAGE_MAP = {
+  "/dashboard":               { label: "لوحة التحكم", icon: LayoutDashboard },
+  "/dashboard/conversations": { label: "المحادثات",   icon: MessageCircle   },
+  "/dashboard/analytics":     { label: "التحليلات",   icon: BarChart3       },
+  "/dashboard/products":      { label: "المنتجات",    icon: ShoppingBag     },
+  "/dashboard/customers":     { label: "الزبائن",     icon: Users           },
+  "/dashboard/settings":      { label: "الإعدادات",   icon: Settings        },
 }
 
+/* ─────────────── Notification type → icon ─────────────── */
+const NOTIF_ICONS = {
+  NEW_ORDER:       { icon: ShoppingCart,  cls: "text-brand-600 bg-brand-600/10"   },
+  OBJECTION_ALERT: { icon: AlertTriangle, cls: "text-warning   bg-warning/10"     },
+  DAILY_REPORT:    { icon: FileBarChart,  cls: "text-brand-400 bg-brand-400/10"   },
+  AGENT_DOWN:      { icon: WifiOff,       cls: "text-danger    bg-danger/10"      },
+  SYSTEM:          { icon: Info,          cls: "text-muted-foreground bg-secondary"},
+}
+function NotifIcon({ type }) {
+  const cfg = NOTIF_ICONS[type] || { icon: Mail, cls: "text-muted-foreground bg-secondary" }
+  const Ico = cfg.icon
+  return (
+    <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0", cfg.cls)}>
+      <Ico size={13} />
+    </div>
+  )
+}
+
+/* ─────────────── User initials helper ─────────────── */
+function userInitial(user) {
+  if (!user?.name) return "؟"
+  const parts = user.name.trim().split(" ")
+  return parts.length >= 2
+    ? parts[0][0] + parts[parts.length - 1][0]
+    : parts[0].slice(0, 2)
+}
+
+/* ════════════════════════════════════════════════
+   TopBar
+════════════════════════════════════════════════ */
 export function TopBar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const page = pageNames[pathname] || { label: "SalesBot", icon: LayoutDashboard }
+  const router   = useRouter()
+  const page     = PAGE_MAP[pathname] || { label: "SalesBot", icon: LayoutDashboard }
   const PageIcon = page.icon
-  
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [showNotifications, setShowNotifications] = useState(false)
-  const [notifications, setNotifications] = useState([])
-  const [notificationsLoading, setNotificationsLoading] = useState(false)
 
-  // Fetch notifications count and user data
+  const [user, setUser]                         = useState(null)
+  const [unreadCount, setUnreadCount]           = useState(0)
+  const [showNotifs, setShowNotifs]             = useState(false)
+  const [notifications, setNotifications]       = useState([])
+  const [notifsLoading, setNotifsLoading]       = useState(false)
+
+  /* ── Init: user + unread count ── */
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Get token from localStorage
-        const token = localStorage.getItem("token")
-        if (!token) {
-          setLoading(false)
-          return
-        }
+    const token = localStorage.getItem("token")
+    if (!token) return
 
-        // Get user from localStorage
-        const storedUser = localStorage.getItem("user")
-        if (storedUser) {
-          setUser(JSON.parse(storedUser))
-        }
-        
-        // Get unread notifications count
-        const response = await notificationsAPI.getAll({ unread: true })
-        setUnreadCount(response.data?.unreadCount || 0)
-      } catch (err) {
-        console.error("Error fetching notifications:", err)
-      } finally {
-        setLoading(false)
-      }
+    const stored = localStorage.getItem("user")
+    if (stored) setUser(JSON.parse(stored))
+
+    async function fetchCount() {
+      try {
+        const res = await notificationsAPI.getAll({ unread: true })
+        setUnreadCount(res.data?.unreadCount || 0)
+      } catch {}
     }
-    
-    fetchData()
-    
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000)
-    return () => clearInterval(interval)
+
+    fetchCount()
+    const t = setInterval(fetchCount, 30_000)
+    return () => clearInterval(t)
   }, [])
 
-  // Fetch all notifications when opening drawer
-  const handleOpenNotifications = async () => {
-    setShowNotifications(true)
+  /* ── Open notifications panel ── */
+  async function openNotifs() {
+    setShowNotifs(true)
     try {
-      setNotificationsLoading(true)
-      const response = await notificationsAPI.getAll({ limit: 20 })
-      setNotifications(response.data?.notifications || [])
-    } catch (err) {
-      console.error("Error fetching notifications:", err)
-    } finally {
-      setNotificationsLoading(false)
+      setNotifsLoading(true)
+      const res = await notificationsAPI.getAll({ limit: 20 })
+      setNotifications(res.data?.notifications || [])
+    } catch {} finally {
+      setNotifsLoading(false)
     }
   }
 
-  // Mark notification as read
-  const handleMarkAsRead = async (id) => {
+  async function markRead(id) {
     try {
       await notificationsAPI.markAsRead(id)
-      // Update local state
-      setNotifications(notifications.map(n => 
-        n.id === id ? { ...n, isRead: true } : n
-      ))
-      setUnreadCount(Math.max(0, unreadCount - 1))
-    } catch (err) {
-      console.error("Error marking notification as read:", err)
-    }
+      setNotifications(n => n.map(x => x.id === id ? { ...x, isRead: true } : x))
+      setUnreadCount(c => Math.max(0, c - 1))
+    } catch {}
   }
 
-  // Mark all notifications as read
-  const handleMarkAllAsRead = async () => {
+  async function markAllRead() {
     try {
       await notificationsAPI.markAllAsRead()
-      // Update local state
-      setNotifications(notifications.map(n => ({ ...n, isRead: true })))
+      setNotifications(n => n.map(x => ({ ...x, isRead: true })))
       setUnreadCount(0)
-    } catch (err) {
-      console.error("Error marking all as read:", err)
-    }
+    } catch {}
   }
 
-  const getNotificationIcon = (type) => {
-    const icons = {
-      NEW_ORDER: "🎉",
-      OBJECTION_ALERT: "⚠️",
-      DAILY_REPORT: "📊",
-      AGENT_DOWN: "❌",
-      SYSTEM: "ℹ️"
-    }
-    return icons[type] || "📬"
-  }
-
-  const handleLogout = () => {
+  function handleLogout() {
     localStorage.removeItem("token")
     localStorage.removeItem("user")
     router.push("/login")
   }
 
   return (
-    <header className="h-14 bg-card border-b border-border/30 px-3 md:px-4 flex items-center justify-between sticky top-0 z-10 shrink-0 shadow-sm shadow-brand-600/5">
-      {/* اسم الصفحة */}
-      <div className="flex items-center gap-2">
-        <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-brand-100 flex items-center justify-center border border-brand-200/30">
+    <header className="h-14 bg-card border-b border-border px-4 md:px-5 flex items-center justify-between sticky top-0 z-10 shrink-0">
+
+      {/* ── Left: page title ── */}
+      <div className="flex items-center gap-2.5">
+        <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center">
           <PageIcon size={14} className="text-brand-600" />
         </div>
-        <h1 className="text-sm font-semibold text-foreground">{page.label}</h1>
+        <h1 className="text-[13px] font-bold text-foreground">{page.label}</h1>
       </div>
 
-      {/* يمين */}
-      <div className="flex items-center gap-2 md:gap-3">
-        {/* Agent Status */}
-        <div className="hidden sm:flex items-center gap-1.5 bg-success/10 border border-success/20 rounded-full px-3 py-1.5 shadow-sm shadow-success/10">
-          <Bot size={12} className="text-success" />
-          <span className="text-[10px] font-semibold text-success">
-            {user?.name || "Agent"} نشط
-          </span>
-          <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-        </div>
+      {/* ── Right: actions ── */}
+      <div className="flex items-center gap-1.5 md:gap-2">
 
-        {/* Notifications */}
+        {/* ─ Notifications ─ */}
         <div className="relative">
-          <button 
-            onClick={handleOpenNotifications}
-            className="relative p-2 rounded-md hover:bg-secondary/80 transition-all duration-200 border border-transparent hover:border-border/30"
+          <button
+            onClick={openNotifs}
+            className="relative p-2 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-all duration-200"
           >
-            <Bell size={16} className="text-muted-foreground" />
+            <Bell size={15} className="text-muted-foreground" />
             {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-brand-600 text-white text-[9px] font-bold shadow-sm shadow-brand-600/40">
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-brand-600 text-white text-[9px] font-bold flex items-center justify-center leading-none">
                 {unreadCount > 9 ? "9+" : unreadCount}
               </span>
             )}
           </button>
 
-          {/* Notifications Dropdown */}
-          {showNotifications && (
+          {/* Notifications panel */}
+          {showNotifs && (
             <>
-              {/* Overlay */}
-              <div 
-                className="fixed inset-0 z-40 bg-black/20"
-                onClick={() => setShowNotifications(false)}
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowNotifs(false)}
               />
-              
-              {/* Panel */}
-              <div className="fixed top-14 left-0 w-72 border border-border rounded-xl flex flex-col shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200 max-h-[400px]" style={{ backgroundColor: 'var(--modal-surface)' }}>
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-border/30 bg-card">
+              <div
+                className="fixed top-14 left-3 sm:left-auto sm:right-auto w-[300px] border border-border rounded-xl shadow-xl z-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200"
+                style={{ backgroundColor: "var(--modal-surface, var(--card))", maxHeight: "420px" }}
+              >
+                {/* Panel header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
                   <div>
-                    <h2 className="text-xs font-semibold text-foreground">الإشعارات</h2>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      {unreadCount} غير مقروءة
+                    <p className="text-[12px] font-bold text-foreground">الإشعارات</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {unreadCount > 0 ? `${unreadCount} غير مقروءة` : "كل شيء مقروء"}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1">
                     {unreadCount > 0 && (
                       <button
-                        onClick={handleMarkAllAsRead}
-                        className="p-1.5 rounded-md hover:bg-secondary/70 transition-all duration-200 text-muted-foreground hover:text-foreground border border-transparent hover:border-border/30 group"
+                        onClick={markAllRead}
                         title="تعليم الكل كمقروء"
+                        className="p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-colors text-muted-foreground hover:text-brand-600"
                       >
-                        <CheckCheck size={14} className="group-hover:text-success" />
+                        <CheckCheck size={13} />
                       </button>
                     )}
                     <button
-                      onClick={() => setShowNotifications(false)}
-                      className="p-1.5 rounded-md hover:bg-secondary/70 transition-all duration-200 text-muted-foreground hover:text-foreground border border-transparent hover:border-border/30"
+                      onClick={() => setShowNotifs(false)}
+                      className="p-1.5 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-colors text-muted-foreground hover:text-foreground"
                     >
-                      <X size={14} />
+                      <X size={13} />
                     </button>
                   </div>
                 </div>
 
-                {/* Notifications List */}
-                <div className="flex-1 overflow-y-auto max-h-72">
-                  {notificationsLoading ? (
-                    <div className="flex items-center justify-center h-28">
+                {/* List */}
+                <div className="overflow-y-auto flex-1">
+                  {notifsLoading ? (
+                    <div className="flex items-center justify-center h-24">
                       <Loader2 size={18} className="animate-spin text-brand-600" />
                     </div>
                   ) : notifications.length === 0 ? (
-                    <div className="flex items-center justify-center h-28 text-muted-foreground">
-                      <p className="text-xs">لا توجد إشعارات</p>
+                    <div className="flex flex-col items-center justify-center gap-2 h-24">
+                      <Bell size={18} className="text-muted-foreground/40" />
+                      <p className="text-[11px] text-muted-foreground">لا توجد إشعارات</p>
                     </div>
                   ) : (
-                    notifications.map((notification) => (
+                    notifications.map((n) => (
                       <div
-                        key={notification.id}
+                        key={n.id}
+                        onClick={() => !n.isRead && markRead(n.id)}
                         className={cn(
-                          "border-b border-border/20 px-4 py-3 transition-all duration-200 cursor-pointer hover:bg-secondary/40",
-                          !notification.isRead && "bg-brand-50 border-b border-brand-100/30"
+                          "flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 cursor-pointer transition-colors duration-150 hover:bg-secondary/60",
+                          !n.isRead && "bg-brand-600/5"
                         )}
-                        onClick={() => !notification.isRead && handleMarkAsRead(notification.id)}
                       >
-                        <div className="flex gap-2.5">
-                          <div className="text-lg mt-0.5">
-                            {getNotificationIcon(notification.type)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-foreground">
-                              {notification.title}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">
-                              {notification.message}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground mt-1 opacity-70">
-                              {new Date(notification.createdAt).toLocaleDateString("ar-MA", {
-                                month: "short",
-                                day: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit"
-                              })}
-                            </p>
-                          </div>
-                          {!notification.isRead && (
-                            <div className="w-2 h-2 rounded-full bg-brand-600 shrink-0 mt-1.5 shadow-sm shadow-brand-600/40" />
-                          )}
+                        <NotifIcon type={n.type} />
+
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-bold text-foreground leading-tight">{n.title}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">{n.message}</p>
+                          <p className="text-[10px] text-muted-foreground/60 mt-1">
+                            {new Date(n.createdAt).toLocaleDateString("ar-MA", {
+                              month: "short", day: "numeric",
+                              hour: "2-digit", minute: "2-digit",
+                            })}
+                          </p>
                         </div>
+
+                        {!n.isRead && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-brand-600 shrink-0 mt-1.5 animate-pulse" />
+                        )}
                       </div>
                     ))
                   )}
@@ -247,28 +231,34 @@ export function TopBar() {
           )}
         </div>
 
-        {/* Theme Toggle */}
+        {/* ─ Theme toggle ─ */}
         <ThemeToggle />
 
-        {/* Divider */}
-        <div className="w-px h-5 bg-border/20" />
+        {/* ─ Divider ─ */}
+        <div className="w-px h-5 bg-border mx-1" />
 
-        {/* Avatar & Logout */}
+        {/* ─ User + logout ─ */}
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-md bg-brand-600 flex items-center justify-center text-[10px] font-bold text-white shadow-sm shadow-brand-600/30">
-            {user?.name ? user.name.charAt(0).toUpperCase() : "؟"}
+          {/* Avatar */}
+          <div className="w-7 h-7 rounded-full bg-brand-600 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
+            {userInitial(user)}
           </div>
-          <span className="text-[10px] font-medium text-muted-foreground hidden sm:block truncate max-w-[80px]">
+
+          {/* Name */}
+          <span className="hidden sm:block text-[11px] font-medium text-muted-foreground truncate max-w-[80px]">
             {user?.storeName || user?.name || "المستخدم"}
           </span>
+
+          {/* Logout */}
           <button
             onClick={handleLogout}
-            className="p-1.5 rounded-md hover:bg-danger/10 transition-all duration-200 text-muted-foreground hover:text-danger border border-transparent hover:border-danger/20"
             title="تسجيل الخروج"
+            className="p-1.5 rounded-lg hover:bg-red-500/10 border border-transparent hover:border-red-500/20 text-muted-foreground hover:text-red-500 transition-all duration-200"
           >
             <LogOut size={14} />
           </button>
         </div>
+
       </div>
     </header>
   )

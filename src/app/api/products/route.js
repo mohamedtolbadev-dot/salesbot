@@ -43,12 +43,13 @@ export async function POST(request) {
   try {
     const { name, price, description, images } = await request.json()
 
-    if (!name || !price) {
-      return errorResponse("الاسم والسعر مطلوبان")
+    if (!name?.trim() || price === undefined || price === null) {
+      return errorResponse("الاسم والسعر مطلوبان", 400)
     }
 
-    if (isNaN(price) || price <= 0) {
-      return errorResponse("السعر يجب أن يكون رقماً موجباً")
+    const parsedPrice = Number(price)
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+      return errorResponse("السعر يجب أن يكون رقماً موجباً", 400)
     }
 
     const product = await prisma.product.create({

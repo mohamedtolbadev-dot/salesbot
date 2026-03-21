@@ -70,3 +70,35 @@ export async function PATCH(request, { params }) {
     return errorResponse("خطأ في تحديث المحادثة", 500)
   }
 }
+
+export async function DELETE(request, { params }) {
+  const user = await getUserFromRequest(request)
+  if (!user) return unauthorizedResponse()
+
+  try {
+    const { id } = await params
+    
+    // Check if conversation exists and belongs to user
+    const conversation = await prisma.conversation.findFirst({
+      where: { id, userId: user.id }
+    })
+    
+    if (!conversation) {
+      return errorResponse("المحادثة غير موجودة", 404)
+    }
+
+    // Delete related messages first (cascade delete)
+    await prisma.message.deleteMany({
+      where: { conversationId: id }
+    })
+
+    // Delete the conversation
+    await prisma.conversation.delete({
+      where: { id }
+    })
+    return successResponse({ message: "تم حذف المحادثة بنجاح" })
+  } catch (error) {
+    console.error("[API] DELETE conversation error:", error)
+    return errorResponse("خطأ في حذف المحادثة", 500)
+  }
+}

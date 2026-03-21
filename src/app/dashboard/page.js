@@ -1,11 +1,128 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { statsAPI, conversationsAPI, agentAPI } from "@/lib/api"
 import { getStageConfig, getScoreColor, getInitials } from "@/lib/helpers"
-import { Bot, TrendingUp, Plus, ChevronLeft, MessageCircle, BarChart3, Sparkles, ArrowUpRight, ShoppingBag, AlertCircle, RefreshCw } from "lucide-react"
+import {
+  Bot, TrendingUp, Plus, ChevronLeft, MessageCircle,
+  BarChart3, Sparkles, ArrowUpRight, ShoppingBag,
+  AlertCircle, RefreshCw, Activity, Zap, Settings2,
+  Brain, Star, Globe, Languages,
+} from "lucide-react"
 
+/* ─────────────── Animated Counter ─────────────── */
+function AnimatedNumber({ value, suffix = "" }) {
+  const [display, setDisplay] = useState(0)
+  const raf = useRef(null)
+  useEffect(() => {
+    const target = typeof value === "number" ? value : parseFloat(String(value).replace(/,/g, "")) || 0
+    const duration = 900
+    const start = performance.now()
+    const tick = (now) => {
+      const p = Math.min((now - start) / duration, 1)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setDisplay(Math.floor(eased * target))
+      if (p < 1) raf.current = requestAnimationFrame(tick)
+      else setDisplay(target)
+    }
+    raf.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf.current)
+  }, [value])
+  return <>{display.toLocaleString("ar-MA")}{suffix}</>
+}
+
+/* ─────────────── Score Bar ─────────────── */
+function ScoreBar({ score, color }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-12 h-1 bg-border rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-700 ease-out"
+          style={{ width: `${score}%`, backgroundColor: color }}
+        />
+      </div>
+      <span className="text-[11px] font-bold tabular-nums" style={{ color }}>{score}%</span>
+    </div>
+  )
+}
+
+/* ─────────────── Stage Funnel Bar ─────────────── */
+function FunnelBar({ label, count, pct, delay }) {
+  const [animated, setAnimated] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setAnimated(true), delay)
+    return () => clearTimeout(t)
+  }, [delay])
+  return (
+    <div className="flex items-center gap-3 py-1.5 px-1 rounded-lg hover:bg-secondary/40 transition-colors duration-200 cursor-default group">
+      <span className="text-[11px] text-muted-foreground font-medium min-w-[50px] group-hover:text-foreground transition-colors">{label}</span>
+      <div className="flex-1 h-[3px] bg-border rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full"
+          style={{
+            backgroundColor: "var(--brand-600, #534AB7)",
+            width: animated ? pct : "0%",
+            transition: "width 0.8s cubic-bezier(0.16, 1, 0.3, 1)",
+          }}
+        />
+      </div>
+      <span className="text-[11px] font-bold text-foreground min-w-[18px] text-left">{count}</span>
+    </div>
+  )
+}
+
+/* ─────────────── Stat Card ─────────────── */
+function StatCard({ icon: Icon, label, value, badge, badgeVariant = "default", delay = 0 }) {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), delay)
+    return () => clearTimeout(t)
+  }, [delay])
+
+  return (
+    <div
+      className="group rounded-xl p-4 overflow-hidden cursor-default transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5"
+      style={{
+        backgroundColor: "#534AB7",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(12px)",
+        transition: "opacity 0.45s ease, transform 0.45s ease",
+      }}
+    >
+      <div className="flex items-start justify-between mb-4">
+        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
+          <Icon size={15} className="text-white" />
+        </div>
+        {badge && (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/15 border border-white/20 text-white/90">
+            {badge}
+          </span>
+        )}
+      </div>
+      <p className="text-2xl font-bold tracking-tight text-white tabular-nums">
+        <AnimatedNumber value={typeof value === "number" ? value : 0} />
+      </p>
+      <p className="text-[11px] text-white/70 mt-1 font-medium">{label}</p>
+      <div className="mt-3 h-[2px] w-0 bg-white/50 rounded-full group-hover:w-full transition-all duration-500 ease-out" />
+    </div>
+  )
+}
+
+/* ─────────────── Agent Info Chip ─────────────── */
+function AgentChip({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-center gap-2 bg-white/8 hover:bg-white/14 border border-white/12 rounded-lg px-3 py-2 transition-colors duration-200 cursor-default">
+      <Icon size={11} className="text-white/50 shrink-0" />
+      <div className="min-w-0">
+        <p className="text-[9px] text-white/45 leading-none mb-0.5">{label}</p>
+        <p className="text-[11px] font-semibold text-white truncate leading-tight">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────── Main Page ─────────────── */
 export default function DashboardPage() {
   const router = useRouter()
   const [stats, setStats] = useState(null)
@@ -14,9 +131,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
+  useEffect(() => { fetchDashboardData() }, [])
 
   async function fetchDashboardData() {
     try {
@@ -30,361 +145,361 @@ export default function DashboardPage() {
       setConversations(conversationsData.data?.conversations || [])
       setAgent(agentData.data)
     } catch (err) {
-      console.error("Error fetching dashboard data:", err)
       setError("فشل في تحميل البيانات")
     } finally {
       setLoading(false)
     }
   }
 
+  /* ── Loading skeleton ── */
   if (loading) {
     return (
-      <div className="flex flex-col gap-4 sm:gap-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {[1,2,3,4].map(i => <div key={i} className="bg-secondary animate-pulse rounded-2xl h-20 sm:h-24" />)}
+      <div className="flex flex-col gap-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-secondary/60 rounded-xl h-24 animate-pulse" />
+          ))}
         </div>
-        <div className="bg-secondary animate-pulse rounded-2xl h-64" />
+        <div className="bg-secondary/60 rounded-xl h-72 animate-pulse" />
       </div>
     )
   }
 
+  /* ── Error state ── */
   if (error || !stats) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-        <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
-          <AlertCircle size={24} className="text-red-500" />
+        <div className="w-12 h-12 rounded-full border border-red-200 bg-red-50 flex items-center justify-center">
+          <AlertCircle size={20} className="text-red-500" />
         </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-foreground mb-1">فشل في تحميل البيانات</p>
-          <p className="text-xs text-muted-foreground">{error}</p>
+          <p className="text-sm font-semibold text-foreground">فشل في تحميل البيانات</p>
+          <p className="text-xs text-muted-foreground mt-1">{error}</p>
         </div>
-        <button onClick={() => window.location.reload()} className="flex items-center gap-2 text-sm text-brand-600 hover:text-brand-800 transition-colors">
-          <RefreshCw size={14} />
+        <button
+          onClick={() => window.location.reload()}
+          className="flex items-center gap-2 text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors"
+        >
+          <RefreshCw size={13} />
           إعادة المحاولة
         </button>
       </div>
     )
   }
 
+  /* ── Main render ── */
   return (
-    // ↓ gap أصغر على الموبايل
-    <div className="flex flex-col gap-4 sm:gap-6">
+    <div className="flex flex-col gap-5" dir="rtl">
 
-      {/* ── 1. Page Header ── */}
-      <div className="flex justify-between items-center gap-2">
+      {/* ── 1. Header ── */}
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-base sm:text-lg font-semibold text-foreground">لوحة التحكم</h1>
-          {/* ↓ التاريخ مختصر على الموبايل */}
-          <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
+          <h1 className="text-base font-bold text-foreground tracking-tight">لوحة التحكم</h1>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
             {new Date().toLocaleDateString("ar-MA", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5 sm:hidden">
-            {new Date().toLocaleDateString("ar-MA", { month: "short", day: "numeric" })}
-          </p>
         </div>
-        <div className="flex gap-2">
-          {/* ↓ على الموبايل: أيقونة فقط بدون نص */}
+        <div className="flex items-center gap-2">
           <button
             onClick={() => router.push("/dashboard/settings")}
-            className="flex items-center gap-1.5 border border-border px-2.5 sm:px-3 py-2 rounded-lg text-xs text-foreground hover:bg-secondary hover:border-brand-200 transition-all duration-200"
+            className="flex items-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-xs font-medium text-foreground hover:border-brand-300 hover:text-brand-600 transition-all duration-200"
           >
-            <Bot size={14} className="text-brand-600" />
+            <Bot size={13} />
             <span className="hidden sm:inline">تخصيص Agent</span>
           </button>
           <button
             onClick={() => router.push("/dashboard/products")}
-            className="flex items-center gap-1.5 bg-brand-600 text-white px-2.5 sm:px-3 py-2 rounded-lg text-xs font-medium hover:bg-brand-800 transition-all duration-200 shadow-md shadow-brand-600/20"
+            className="flex items-center gap-1.5 bg-brand-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-brand-800 transition-colors duration-200 shadow-sm"
           >
-            <Plus size={14} />
+            <Plus size={13} />
             <span className="hidden sm:inline">منتج جديد</span>
           </button>
         </div>
       </div>
 
       {/* ── 2. Stats Row ── */}
-      {/* ↓ 2 كولومن على الموبايل، 4 على lg */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-
-        {/* كارد 1: محادثات اليوم */}
-        <div className="group relative bg-card border border-border rounded-xl p-3 sm:p-4 overflow-hidden transition-all duration-500 hover:shadow-xl hover:shadow-brand-600/10 hover:border-brand-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-secondary flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
-                <MessageCircle size={15} className="text-brand-600" />
-              </div>
-              {/* ↓ badge مختصر على الموبايل */}
-              <span className="flex items-center gap-1 text-[10px] text-brand-600 bg-secondary px-1.5 sm:px-2 py-1 rounded-full font-medium">
-                <TrendingUp size={10} />
-                <span className="hidden sm:inline">+12%</span>
-                <span className="sm:hidden">↑</span>
-              </span>
-            </div>
-            <p className="text-xl sm:text-2xl font-bold text-foreground group-hover:text-brand-600 transition-colors duration-300">{stats.todayConversations}</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">محادثات اليوم</p>
-          </div>
-        </div>
-
-        {/* كارد 2: مبيعات اليوم */}
-        <div className="group relative bg-card border border-border rounded-xl p-3 sm:p-4 overflow-hidden transition-all duration-500 hover:shadow-xl hover:shadow-brand-600/10 hover:border-brand-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-secondary flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
-                <ShoppingBag size={15} className="text-brand-600" />
-              </div>
-              <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 sm:px-2 py-1 rounded-full font-medium">
-                {stats.conversionRate}%
-              </span>
-            </div>
-            <p className="text-xl sm:text-2xl font-bold text-foreground group-hover:text-brand-600 transition-colors duration-300">{stats.todaySales}</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">مبيعات اليوم</p>
-          </div>
-        </div>
-
-        {/* كارد 3: قيد الإقناع */}
-        <div className="group relative bg-card border border-border rounded-xl p-3 sm:p-4 overflow-hidden transition-all duration-500 hover:shadow-xl hover:shadow-brand-600/10 hover:border-brand-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-secondary flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
-                <Sparkles size={15} className="text-brand-600" />
-              </div>
-              <span className="flex items-center gap-1 text-[10px] text-brand-600 bg-secondary px-1.5 sm:px-2 py-1 rounded-full font-medium">
-                <Bot size={10} />
-                <span className="hidden sm:inline">Agent</span>
-              </span>
-            </div>
-            <p className="text-xl sm:text-2xl font-bold text-foreground group-hover:text-brand-600 transition-colors duration-300">{stats.pitching}</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">قيد الإقناع</p>
-          </div>
-        </div>
-
-        {/* كارد 4: إيرادات اليوم */}
-        <div className="group relative bg-card border border-border rounded-xl p-3 sm:p-4 overflow-hidden transition-all duration-500 hover:shadow-xl hover:shadow-brand-600/10 hover:border-brand-300 hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="relative">
-            <div className="flex items-center justify-between mb-2 sm:mb-3">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-secondary flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
-                <BarChart3 size={15} className="text-brand-600" />
-              </div>
-              <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 sm:px-2 py-1 rounded-full font-medium">
-                د.م
-              </span>
-            </div>
-            {/* ↓ الأرقام الكبيرة تتكيف مع عرض الموبايل */}
-            <p className="text-xl sm:text-2xl font-bold text-foreground group-hover:text-brand-600 transition-colors duration-300 truncate">
-              {stats.todayRevenue?.toLocaleString("ar-MA")}
-            </p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">إيرادات اليوم</p>
-          </div>
-        </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={MessageCircle} label="محادثات اليوم" value={stats.todayConversations} badge="+12%" badgeVariant="up" delay={0} />
+        <StatCard icon={ShoppingBag}  label="مبيعات اليوم"   value={stats.todaySales}          badge={`${stats.conversionRate}%`} delay={80} />
+        <StatCard icon={Sparkles}     label="قيد الإقناع"    value={stats.pitching}            badge="Agent" badgeVariant="up" delay={160} />
+        <StatCard icon={BarChart3}    label="إيرادات اليوم"  value={stats.todayRevenue || 0}   badge="د.م" delay={240} />
       </div>
 
       {/* ── 3. Main Grid ── */}
-      {/* ↓ على الموبايل: عمود واحد مكدس، على lg: عمودان */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* المحادثات — col-span-2 */}
-        <div className="lg:col-span-2">
-          <div className="bg-card border border-border rounded-xl overflow-hidden hover:shadow-xl hover:shadow-brand-600/10 transition-all duration-500">
-            {/* Header */}
-            <div className="p-3 sm:p-4 border-b border-border flex justify-between items-center bg-gradient-to-r from-card to-secondary/30">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-md bg-secondary flex items-center justify-center transition-transform hover:scale-110">
-                  <MessageCircle size={14} className="text-brand-600" />
-                </div>
-                <span className="text-sm font-semibold">آخر المحادثات</span>
+        {/* ── Conversations Panel ── */}
+        <div className="lg:col-span-2 bg-card border border-border rounded-xl overflow-hidden transition-shadow duration-300 hover:shadow-lg">
+
+          {/* Panel header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center">
+                <MessageCircle size={13} className="text-brand-600" />
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] px-2 py-1 rounded-full bg-secondary text-brand-600 border border-brand-200 font-medium shadow-sm hidden sm:inline-flex">
-                  {stats.todayConversations} اليوم
-                </span>
-                <button
-                  onClick={() => router.push("/dashboard/conversations")}
-                  className="text-xs text-brand-600 hover:text-brand-800 flex items-center gap-0.5 transition-all hover:gap-1 font-medium"
-                >
-                  عرض الكل
-                  <ChevronLeft size={12} />
-                </button>
-              </div>
+              <span className="text-[13px] font-semibold">آخر المحادثات</span>
+              <span className="hidden sm:flex items-center justify-center text-[10px] font-semibold text-brand-600 bg-brand-600/10 border border-brand-200 rounded-md px-2 py-0.5">
+                {stats.todayConversations} اليوم
+              </span>
             </div>
+            <button
+              onClick={() => router.push("/dashboard/conversations")}
+              className="flex items-center gap-0.5 text-[11px] font-semibold text-brand-600 hover:text-brand-800 hover:gap-1 transition-all duration-200"
+            >
+              عرض الكل
+              <ChevronLeft size={12} />
+            </button>
+          </div>
 
-            {/* Desktop Table */}
-            <table className="w-full hidden md:table">
-              <thead>
-                <tr className="bg-secondary/60">
-                  <th className="text-right text-[10px] font-semibold text-muted-foreground p-3">الزبون</th>
-                  <th className="text-right text-[10px] font-semibold text-muted-foreground p-3">آخر رسالة</th>
-                  <th className="text-right text-[10px] font-semibold text-muted-foreground p-3">المرحلة</th>
-                  <th className="text-right text-[10px] font-semibold text-muted-foreground p-3">النتيجة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {conversations.slice(0, 4).map((conv) => {
-                  const stage = getStageConfig(conv.stage)
-                  const scoreColor = getScoreColor(conv.score)
-                  const lastMessage = conv.messages?.[0]?.content || "لا رسائل"
-                  return (
-                    <tr
-                      key={conv.id}
-                      onClick={() => router.push("/dashboard/conversations")}
-                      className="border-t border-border hover:bg-secondary/50 cursor-pointer transition-all duration-300 hover:shadow-sm group"
-                    >
-                      <td className="p-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-xs font-semibold text-white shrink-0 transition-transform group-hover:scale-110">
-                            {getInitials(conv.customer?.name)}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-xs font-semibold text-foreground group-hover:text-brand-600 transition-colors">{conv.customer?.name || "زبون"}</span>
-                            {!conv.isRead && (
-                              <span className="text-[10px] text-brand-600 animate-pulse">رسالة جديدة</span>
-                            )}
-                          </div>
-                          {!conv.isRead && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-brand-600 shrink-0 animate-pulse shadow-sm shadow-brand-600/50" />
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3 text-xs text-muted-foreground max-w-[140px]">
-                        <span className="truncate block group-hover:text-foreground transition-colors">{lastMessage}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className={`text-[10px] px-2 py-1 rounded-full border font-medium transition-all hover:shadow-sm ${stage.className}`}>{stage.label}</span>
-                      </td>
-                      <td className="p-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-12 h-1.5 bg-border rounded-full overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all duration-500"
-                              style={{ width: `${conv.score}%`, backgroundColor: scoreColor }}
-                            />
-                          </div>
-                          <span className="text-xs font-semibold" style={{ color: scoreColor }}>{conv.score}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-                {conversations.length === 0 && (
-                  <tr>
-                    <td colSpan="4" className="p-8 text-center text-muted-foreground">لا توجد محادثات حالياً</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-
-            {/* Mobile Cards */}
-            <div className="md:hidden flex flex-col divide-y divide-border">
-              {conversations.slice(0, 4).map((conv) => {
+          {/* Desktop Table — no blurry/semi-transparent header */}
+          <table className="w-full hidden md:table">
+            <thead>
+              <tr>
+                <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">الزبون</th>
+                <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">آخر رسالة</th>
+                <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">المرحلة</th>
+                <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">النتيجة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {conversations.slice(0, 5).map((conv, idx) => {
                 const stage = getStageConfig(conv.stage)
                 const scoreColor = getScoreColor(conv.score)
+                const lastMessage = conv.messages?.[0]?.content || "لا رسائل"
                 return (
-                  <div
+                  <tr
                     key={conv.id}
                     onClick={() => router.push("/dashboard/conversations")}
-                    className="flex items-center gap-3 p-3 hover:bg-secondary/50 cursor-pointer transition-colors active:bg-secondary/70"
+                    className="border-t border-border hover:bg-secondary cursor-pointer transition-colors duration-150 group"
+                    style={{ animationDelay: `${idx * 60}ms` }}
                   >
-                    <div className="w-9 h-9 rounded-full bg-brand-600 flex items-center justify-center text-xs font-semibold text-white shrink-0">
-                      {getInitials(conv.customer?.name)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-foreground truncate">{conv.customer?.name || "زبون"}</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium shrink-0 ${stage.className}`}>{stage.label}</span>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="relative shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-[11px] font-bold text-white">
+                            {getInitials(conv.customer?.name)}
+                          </div>
+                          {!conv.isRead && (
+                            <span className="absolute -top-0.5 -left-0.5 w-2 h-2 rounded-full bg-brand-600 border-2 border-card" />
+                          )}
+                        </div>
+                        <span className="text-[12px] font-semibold text-foreground group-hover:text-brand-600 transition-colors">
+                          {conv.customer?.name || "زبون"}
+                        </span>
                       </div>
-                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">{conv.messages?.[0]?.content || "لا رسائل"}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="text-xs font-semibold" style={{ color: scoreColor }}>{conv.score}%</span>
-                      {!conv.isRead && <span className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-pulse" />}
-                    </div>
-                  </div>
+                    </td>
+                    <td className="px-4 py-3 max-w-[160px]">
+                      <p className="text-[11px] text-muted-foreground truncate group-hover:text-foreground transition-colors">{lastMessage}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[10px] font-semibold px-2 py-1 rounded-md border ${stage.className}`}>
+                        {stage.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <ScoreBar score={conv.score} color={scoreColor} />
+                    </td>
+                  </tr>
                 )
               })}
               {conversations.length === 0 && (
-                <p className="p-8 text-center text-xs text-muted-foreground">لا توجد محادثات</p>
+                <tr>
+                  <td colSpan="4" className="px-4 py-12 text-center text-[12px] text-muted-foreground">
+                    لا توجد محادثات حالياً
+                  </td>
+                </tr>
               )}
-            </div>
+            </tbody>
+          </table>
+
+          {/* Mobile Cards */}
+          <div className="md:hidden divide-y divide-border">
+            {conversations.slice(0, 5).map((conv) => {
+              const stage = getStageConfig(conv.stage)
+              const scoreColor = getScoreColor(conv.score)
+              return (
+                <div
+                  key={conv.id}
+                  onClick={() => router.push("/dashboard/conversations")}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-secondary active:bg-secondary cursor-pointer transition-colors"
+                >
+                  <div className="relative shrink-0">
+                    <div className="w-9 h-9 rounded-full bg-brand-600 flex items-center justify-center text-[11px] font-bold text-white">
+                      {getInitials(conv.customer?.name)}
+                    </div>
+                    {!conv.isRead && (
+                      <span className="absolute -top-0.5 -left-0.5 w-2 h-2 rounded-full bg-brand-600 border-2 border-card" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[12px] font-semibold text-foreground truncate">{conv.customer?.name || "زبون"}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border shrink-0 ${stage.className}`}>{stage.label}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate mt-0.5">{conv.messages?.[0]?.content || "لا رسائل"}</p>
+                  </div>
+                  <span className="text-[11px] font-bold shrink-0 tabular-nums" style={{ color: scoreColor }}>{conv.score}%</span>
+                </div>
+              )
+            })}
+            {conversations.length === 0 && (
+              <p className="px-4 py-10 text-center text-[12px] text-muted-foreground">لا توجد محادثات</p>
+            )}
           </div>
         </div>
 
-        {/* العمود الجانبي */}
+        {/* ── Sidebar ── */}
         <div className="flex flex-col gap-4">
 
-          {/* مراحل المحادثات */}
-          <div className="bg-card border border-border rounded-xl p-3 sm:p-4 hover:shadow-xl hover:shadow-brand-600/10 transition-all duration-500 group">
-            <div className="flex items-center gap-2 mb-3 sm:mb-4">
-              <div className="w-7 h-7 rounded-md bg-secondary flex items-center justify-center transition-transform group-hover:scale-110">
-                <BarChart3 size={14} className="text-brand-600" />
+          {/* Stages Funnel */}
+          <div className="bg-card border border-border rounded-xl p-4 transition-shadow duration-300 hover:shadow-lg group">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center transition-transform group-hover:scale-110">
+                <Activity size={13} className="text-brand-600" />
               </div>
-              <p className="text-sm font-semibold">مراحل المحادثات</p>
+              <p className="text-[13px] font-semibold">مراحل المحادثات</p>
             </div>
-            {[
-              { label: "ترحيب",    count: stats.stages?.greeting  || 0, pct: "100%" },
-              { label: "استكشاف", count: stats.stages?.discovery  || 0, pct: "74%"  },
-              { label: "إقناع",   count: stats.stages?.pitching   || 0, pct: "47%"  },
-              { label: "اعتراض",  count: stats.stages?.objection  || 0, pct: "26%"  },
-              { label: "إغلاق",   count: stats.stages?.closed     || 0, pct: "17%"  },
-            ].map((s) => (
-              <div key={s.label} className="flex items-center gap-2 mb-2 last:mb-0 group/item hover:bg-secondary/30 rounded-lg px-2 py-1.5 transition-colors cursor-pointer">
-                <span className="text-xs text-muted-foreground min-w-[46px] font-medium group-hover/item:text-foreground transition-colors">{s.label}</span>
-                <div className="flex-1 h-1.5 sm:h-2 bg-border/60 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{ width: s.pct, backgroundColor: "#534AB7" }}
-                  />
-                </div>
-                <span className="text-xs font-semibold text-foreground min-w-[18px] text-left">{s.count}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* AI Agent Card */}
-          <div className="bg-gradient-to-br from-brand-600 to-brand-800 rounded-xl p-3 sm:p-4 text-white hover:shadow-2xl hover:shadow-brand-600/30 transition-all duration-500 group">
-            <div className="flex justify-between items-start mb-3 sm:mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-white/20 flex items-center justify-center transition-transform group-hover:scale-110 group-hover:rotate-6">
-                  <Bot size={18} className="text-white" />
-                </div>
-                <div>
-                  <p className="text-sm sm:text-base font-semibold">{agent?.name || "ليلى"}</p>
-                  <p className="text-[10px] sm:text-xs text-brand-200">بائعة ذكية</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 bg-white/20 px-2 py-1 rounded-full animate-pulse">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                <span className="text-[10px] font-medium">نشطة</span>
-              </div>
-            </div>
-
-            {/* ↓ على الموبايل: عمودان، على sm: عمودان كذلك */}
-            <div className="grid grid-cols-2 gap-2 mb-3 sm:mb-4">
+            <div className="flex flex-col gap-0.5">
               {[
-                { label: "المجال",       value: agent?.domain   || "—" },
-                { label: "اللغة",        value: agent?.language || "—" },
-                { label: "الأسلوب",      value: agent?.style    || "—" },
-                { label: "رسائل اليوم",  value: stats?.todayConversations || 0, highlight: true },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className={`p-2 rounded-lg transition-all hover:scale-105 ${item.highlight ? "bg-white/20" : "bg-white/10"}`}
-                >
-                  <p className="text-[10px] text-brand-200 mb-0.5">{item.label}</p>
-                  <p className="text-xs font-semibold truncate">{item.value}</p>
-                </div>
+                { label: "ترحيب",    count: stats.stages?.greeting || 0, pct: "100%", delay: 200 },
+                { label: "استكشاف", count: stats.stages?.discovery || 0, pct: "74%",  delay: 280 },
+                { label: "إقناع",   count: stats.stages?.pitching  || 0, pct: "47%",  delay: 360 },
+                { label: "اعتراض",  count: stats.stages?.objection || 0, pct: "26%",  delay: 440 },
+                { label: "إغلاق",   count: stats.stages?.closed    || 0, pct: "17%",  delay: 520 },
+              ].map(s => (
+                <FunnelBar key={s.label} {...s} />
               ))}
             </div>
+            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground font-medium">معدل الإغلاق</span>
+              <span className="text-[11px] font-bold text-brand-600">{stats.conversionRate}%</span>
+            </div>
+          </div>
 
+          {/* ── Agent Card — redesigned ── */}
+          <div
+            className="rounded-xl overflow-hidden transition-shadow duration-300 hover:shadow-2xl"
+            style={{ backgroundColor: "#534AB7" }}
+          >
+            {/* Top section */}
+            <div className="px-4 pt-4 pb-3">
+
+              {/* Header row */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  {/* Avatar with ring */}
+                  <div className="relative">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center"
+                      style={{ background: "rgba(255,255,255,0.18)", boxShadow: "0 0 0 2px rgba(255,255,255,0.25)" }}
+                    >
+                      <Brain size={18} className="text-white" />
+                    </div>
+                    {/* Online dot */}
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2"
+                      style={{ borderColor: "#534AB7" }} />
+                  </div>
+
+                  <div>
+                    <p className="text-[14px] font-bold text-white leading-tight tracking-tight">
+                      {agent?.name || "ليلى"}
+                    </p>
+                    <p className="text-[10px] text-white/55 mt-0.5">مساعدة مبيعات ذكية</p>
+                  </div>
+                </div>
+
+                {/* Live pill */}
+                <div
+                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
+                  style={{ background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.3)" }}
+                >
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                  </span>
+                  <span className="text-[10px] font-semibold text-emerald-300">نشطة</span>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="h-px mb-3" style={{ background: "rgba(255,255,255,0.1)" }} />
+
+              {/* Info chips 2×2 */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <AgentChip icon={Globe}     label="المجال"      value={agent?.domain   || "—"} />
+                <AgentChip icon={Languages} label="اللغة"       value={agent?.language || "—"} />
+                <AgentChip icon={Sparkles}  label="الأسلوب"     value={agent?.style    || "—"} />
+                <AgentChip icon={MessageCircle} label="رسائل اليوم"
+                  value={
+                    <AnimatedNumber value={stats?.todayConversations ?? 0} />
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Performance bar */}
+            <div className="px-4 pb-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[10px] text-white/50">معدل الإقناع</span>
+                <span className="text-[10px] font-bold text-white/80">{stats?.conversionRate ?? 0}%</span>
+              </div>
+              <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.12)" }}>
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${stats?.conversionRate ?? 0}%`,
+                    background: "linear-gradient(90deg, rgba(255,255,255,0.5), rgba(255,255,255,0.9))",
+                    transition: "width 1s cubic-bezier(0.16,1,0.3,1)",
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* CTA button */}
             <button
               onClick={() => router.push("/dashboard/settings")}
-              className="w-full bg-white/20 hover:bg-white/30 rounded-lg py-2.5 sm:py-2 text-xs font-medium transition-all duration-300 flex items-center justify-center gap-1 hover:gap-2 active:scale-95"
+              className="w-full flex items-center justify-center gap-2 py-2.5 text-[12px] font-semibold transition-all duration-200 hover:gap-3 active:scale-[0.98]"
+              style={{
+                borderTop: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.07)",
+                color: "rgba(255,255,255,0.85)",
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.13)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
             >
+              <Settings2 size={12} />
               تعديل شخصية Agent
-              <ArrowUpRight size={14} />
+              <ArrowUpRight size={12} />
             </button>
           </div>
+
+          {/* Quick Actions Strip */}
+          <div className="bg-card border border-border rounded-xl p-3 flex items-center justify-between gap-2">
+            <button
+              onClick={() => router.push("/dashboard/conversations")}
+              className="flex-1 flex flex-col items-center gap-1.5 py-2 rounded-lg hover:bg-secondary transition-colors duration-150 group"
+            >
+              <MessageCircle size={15} className="text-brand-600 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-medium text-muted-foreground">المحادثات</span>
+            </button>
+            <div className="w-px h-8 bg-border" />
+            <button
+              onClick={() => router.push("/dashboard/products")}
+              className="flex-1 flex flex-col items-center gap-1.5 py-2 rounded-lg hover:bg-secondary transition-colors duration-150 group"
+            >
+              <ShoppingBag size={15} className="text-brand-600 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-medium text-muted-foreground">المنتجات</span>
+            </button>
+            <div className="w-px h-8 bg-border" />
+            <button
+              onClick={() => router.push("/dashboard/settings")}
+              className="flex-1 flex flex-col items-center gap-1.5 py-2 rounded-lg hover:bg-secondary transition-colors duration-150 group"
+            >
+              <Zap size={15} className="text-brand-600 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-medium text-muted-foreground">الإعدادات</span>
+            </button>
+          </div>
+
         </div>
       </div>
     </div>

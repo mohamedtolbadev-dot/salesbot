@@ -39,7 +39,10 @@ export async function PUT(request) {
       name, domain, style, language,
       isActive, instructions,
       whatsappPhoneId, whatsappToken,
-      selectedProductId
+      selectedProductId, selectedServiceId,
+      mode,
+      workHoursEnabled, workStart, workEnd, offlineMessage,
+      welcomeMessage, postSaleMessage
     } = body
 
     const agent = await prisma.agent.update({
@@ -54,6 +57,14 @@ export async function PUT(request) {
         ...(whatsappPhoneId !== undefined && { whatsappPhoneId }),
         ...(whatsappToken !== undefined && { whatsappToken }),
         ...(selectedProductId !== undefined && { selectedProductId }),
+        ...(selectedServiceId !== undefined && { selectedServiceId }),
+        ...(mode !== undefined && { mode }),
+        ...(workHoursEnabled !== undefined && { workHoursEnabled }),
+        ...(workStart !== undefined && { workStart }),
+        ...(workEnd !== undefined && { workEnd }),
+        ...(offlineMessage !== undefined && { offlineMessage }),
+        ...(welcomeMessage !== undefined && { welcomeMessage }),
+        ...(postSaleMessage !== undefined && { postSaleMessage }),
       }
     })
 

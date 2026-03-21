@@ -1,15 +1,33 @@
 import { prisma } from "@/lib/prisma"
 import { hashPassword, generateToken } from "@/lib/auth"
 import { successResponse, errorResponse } from "@/lib/response"
+import { rateLimit } from "@/lib/rateLimit"
 
 export async function POST(request) {
   try {
+    // Rate limiting - 10 attempts per 15 minutes
+    const rateLimitResult = rateLimit(request, true)
+    if (!rateLimitResult.success) {
+      return errorResponse(`تم تجاوز الحد المسموح به. حاول مرة أخرى بعد ${Math.ceil(rateLimitResult.retryAfter / 60)} دقيقة`, 429)
+    }
+
     const { name, email, password, phone, storeName } =
       await request.json()
 
     // التحقق من الحقول المطلوبة
-    if (!name || !email || !password || !storeName) {
-      return errorResponse("كل الحقول مطلوبة")
+    if (!name?.trim() || !email?.trim() || !password || !storeName?.trim()) {
+      return errorResponse("كل الحقول مطلوبة", 400)
+    }
+
+    // التحقق من صحة الإيميل
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return errorResponse("صيغة الإيميل غير صحيحة", 400)
+    }
+
+    // التحقق من طول كلمة المرور
+    if (password.length < 6) {
+      return errorResponse("كلمة المرور يجب أن تكون 6 أحرف على الأقل", 400)
     }
 
     // التحقق من عدم وجود الإيميل

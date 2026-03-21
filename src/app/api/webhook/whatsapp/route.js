@@ -6,11 +6,32 @@ import {
   sendWhatsAppMessage
 } from "@/lib/whatsapp"
 import { processIncomingMessage } from "@/lib/aiAgent"
+import crypto from "crypto"
 
-const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN ||
-  "salesbot_verify_token_2026"
+// Verify Meta webhook signature
+function verifySignature(body, signature, appSecret) {
+  if (!signature || !appSecret) return false
+  
+  const expectedSignature = crypto
+    .createHmac("sha256", appSecret)
+    .update(body, "utf8")
+    .digest("hex")
+  
+  // Extract signature from header (format: sha256=xxx)
+  const sig = signature.replace("sha256=", "")
+  
+  // Timing-safe comparison
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(sig, "hex"),
+      Buffer.from(expectedSignature, "hex")
+    )
+  } catch {
+    return false
+  }
+}
 
-// GET — التحقق من Webhook (Meta يطلب هذا مرة واحدة)
+// GET — التحقق من Webhook (Meta يطلب هذا مرة واحدة لكل مستخدم)
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
 
@@ -18,8 +39,13 @@ export async function GET(request) {
   const token     = searchParams.get("hub.verify_token")
   const challenge = searchParams.get("hub.challenge")
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("✅ WhatsApp Webhook verified!")
+  // ✅ البحث عن Agent حسب رمز التحقق المقدم
+  const agent = await prisma.agent.findFirst({
+    where: { verifyToken: token }
+  })
+
+  if (mode === "subscribe" && agent) {
+    console.log(`✅ WhatsApp Webhook verified for agent: ${agent.id}`)
     return new Response(challenge, { status: 200 })
   }
 
@@ -28,18 +54,37 @@ export async function GET(request) {
 
 // POST — معالجة كل الرسائل الواردة من كل الزبائن
 export async function POST(request) {
-  // ✅ دائماً ارجع 200 لـ Meta أولاً
-  // نعالج الرسائل بعدين
-
-  let body
-  try {
-    body = await request.json()
-  } catch {
-    return new Response("OK", { status: 200 })
+  // ✅ التحقق من توقيع Meta (HMAC)
+  const signature = request.headers.get("x-hub-signature-256")
+  const appSecret = process.env.WHATSAPP_APP_SECRET
+  
+  if (appSecret) {
+    const body = await request.text()
+    
+    if (!verifySignature(body, signature, appSecret)) {
+      console.error("❌ Invalid webhook signature")
+      return new Response("Invalid signature", { status: 403 })
+    }
+    
+    // Parse body after verification
+    var parsedBody
+    try {
+      parsedBody = JSON.parse(body)
+    } catch {
+      return new Response("OK", { status: 200 })
+    }
+  } else {
+    // Fallback if no app secret configured
+    console.warn("⚠️ WHATSAPP_APP_SECRET not configured - skipping signature verification")
+    try {
+      parsedBody = await request.json()
+    } catch {
+      return new Response("OK", { status: 200 })
+    }
   }
 
   // ✅ معالجة كل الرسائل من كل الزبائن
-  const incomingMessages = parseAllIncomingMessages(body)
+  const incomingMessages = parseAllIncomingMessages(parsedBody)
 
   if (!incomingMessages.length) {
     return new Response("OK", { status: 200 })
@@ -71,6 +116,55 @@ export async function POST(request) {
         if (!agent.isActive) {
           console.log(`⏸️ [${incoming.from}] Agent متوقف`)
           return
+        }
+
+        // ✅ التحقق من ساعات العمل
+        if (agent.workHoursEnabled) {
+          const now = new Date()
+          // استخدام timezone المغرب Africa/Casablanca (يدعم التوقيت الصيفي تلقائياً)
+          const moroccoTime = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Africa/Casablanca',
+            hour: 'numeric',
+            minute: 'numeric',
+            hour12: false
+          }).formatToParts(now)
+          
+          const currentHour = parseInt(moroccoTime.find(p => p.type === 'hour').value)
+          const currentMinute = parseInt(moroccoTime.find(p => p.type === 'minute').value)
+          const currentTime = currentHour * 60 + currentMinute // وقت بالدقائق
+          
+          // تحويل workStart و workEnd لدقائق
+          const [startHour, startMinute] = agent.workStart.split(':').map(Number)
+          const [endHour, endMinute] = agent.workEnd.split(':').map(Number)
+          const workStartMinutes = startHour * 60 + startMinute
+          const workEndMinutes = endHour * 60 + endMinute
+          
+          let isWithinWorkHours
+          if (workStartMinutes <= workEndMinutes) {
+            // نفس اليوم (مثال: 9:00 - 18:00)
+            isWithinWorkHours = currentTime >= workStartMinutes && currentTime <= workEndMinutes
+          } else {
+            // عبر منتصف الليل (مثال: 22:00 - 2:00)
+            isWithinWorkHours = currentTime >= workStartMinutes || currentTime <= workEndMinutes
+          }
+          
+          console.log(`🕐 [${incoming.from}] الوقت الحالي: ${currentHour}:${currentMinute} | ساعات العمل: ${agent.workStart}-${agent.workEnd} | داخل العمل: ${isWithinWorkHours}`)
+          
+          if (!isWithinWorkHours) {
+            console.log(`🕐 [${incoming.from}] خارج ساعات العمل`)
+            
+            // إرسال رسالة خارج أوقات العمل إذا كانت موجودة
+            if (agent.offlineMessage) {
+              await sendWhatsAppMessage({
+                phoneId: agent.whatsappPhoneId,
+                token: agent.whatsappToken,
+                to: incoming.from,
+                message: agent.offlineMessage,
+              })
+              console.log(`📤 [${incoming.from}] تم إرسال رسالة خارج أوقات العمل`)
+            }
+            return // Stop further processing (don't call AI)
+          }
         }
 
         // ✅ معالجة الرسالة + توليد رد AI

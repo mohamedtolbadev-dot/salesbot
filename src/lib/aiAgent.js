@@ -2,8 +2,28 @@
 
 import { prisma } from "@/lib/prisma"
 
-// دالة آمنة لجلب الصور من المنتج
-function parseProductImages(imagesField) {
+// دالة تطبيع رقم الهاتف (منع التكرار)
+function normalizePhone(phone) {
+  if (!phone) return null
+  
+  // إزالة كل شيء ما عدا الأرقام
+  let normalized = phone.replace(/\D/g, "")
+  
+  // إذا كان يبدأ بـ 0، استبدله بـ 212 (المغرب)
+  if (normalized.startsWith("0")) {
+    normalized = "212" + normalized.substring(1)
+  }
+  
+  // إذا لم يبدأ بـ 212، أضفها
+  if (!normalized.startsWith("212") && normalized.length === 9) {
+    normalized = "212" + normalized
+  }
+  
+  return normalized
+}
+
+// دالة آمنة لجلب الصور
+function parseImages(imagesField) {
   if (!imagesField) return []
   
   try {
@@ -23,19 +43,28 @@ function parseProductImages(imagesField) {
 }
 
 // System Prompt الأساسي للـ Agent
-function buildSystemPrompt(agent, products, objectionReplies, selectedProduct) {
-  // إذا كان هناك منتج محدد، نركز عليه
-  let productsList
-  if (selectedProduct) {
-    const images = parseProductImages(selectedProduct.images)
-    productsList = `- ${selectedProduct.name}: ${selectedProduct.price} درهم — ${selectedProduct.description || ""}`
+function buildSystemPrompt(agent, items, objectionReplies, selectedItem, isService = false) {
+  const itemTypeLabel = isService ? "الخدمات" : "المنتجات"
+  const itemActionLabel = isService ? "حجز" : "بيع"
+  
+  // إذا كان هناك منتج/خدمة محدد، نركز عليه
+  let itemsList
+  if (selectedItem) {
+    const images = parseImages(selectedItem.images)
+    const durationInfo = isService && selectedItem.duration 
+      ? ` — المدة: ${selectedItem.duration} دقيقة` 
+      : ""
+    itemsList = `- ${selectedItem.name}: ${selectedItem.price} درهم${durationInfo} — ${selectedItem.description || ""}`
     if (images.length > 0) {
-      productsList += `\n- الصور المتاحة: ${images.length} صورة`
+      itemsList += `\n- الصور المتاحة: ${images.length} صورة`
     }
   } else {
-    productsList = products
+    itemsList = items
       .filter(p => p.isActive)
-      .map(p => `- ${p.name}: ${p.price} درهم — ${p.description || ""}`)
+      .map(p => {
+        const durationInfo = isService && p.duration ? ` — المدة: ${p.duration} دقيقة` : ""
+        return `- ${p.name}: ${p.price} درهم${durationInfo} — ${p.description || ""}`
+      })
       .join("\n")
   }
 
@@ -43,7 +72,13 @@ function buildSystemPrompt(agent, products, objectionReplies, selectedProduct) {
     .map(o => `- عند "${o.trigger}" قل: "${o.reply}"`)
     .join("\n")
 
-  return `أنت ${agent.name}، بائع ذكي للمتجر.
+  const closingInstruction = isService 
+    ? "5. CLOSING — خذ تفاصيل الحجز (اسم + تاريخ + وقت + مكان)"
+    : "5. CLOSING — خذ تفاصيل الطلب (اسم + عنوان + رقم)"
+
+  const confirmTag = isService ? "[BOOKING_CONFIRMED]" : "[ORDER_CONFIRMED]"
+
+  return `أنت ${agent.name}، ${isService ? "مساعد ذكي لحجز الخدمات" : "بائع ذكي للمتجر"}.
 
 مجال المتجر: ${agent.domain}
 أسلوبك: ${
@@ -57,8 +92,8 @@ function buildSystemPrompt(agent, products, objectionReplies, selectedProduct) {
                                 "العربية الفصحى"
 }
 
-المنتجات المتاحة:
-${productsList || "لا منتجات متاحة حالياً"}
+${itemTypeLabel} المتاحة:
+${itemsList || `لا ${itemTypeLabel} متاحة حالياً`}
 
 تعليمات خاصة:
 ${agent.instructions || "كن ودوداً ومفيداً"}
@@ -66,19 +101,19 @@ ${agent.instructions || "كن ودوداً ومفيداً"}
 ردود الاعتراض التلقائية:
 ${objectionsList || "تعامل مع الاعتراضات بأسلوبك"}
 
-مراحل البيع التي تتبعها:
+مراحل ${itemActionLabel} التي تتبعها:
 1. GREETING — رحب واسأل كيف تساعد
 2. DISCOVERY — افهم ما يريده الزبون
-3. PITCHING — قدم المنتج المناسب بشكل جذاب
+3. PITCHING — قدم ${isService ? "الخدمة" : "المنتج"} المناسب بشكل جذاب
 4. OBJECTION — تعامل مع الاعتراضات بالردود المحددة
-5. CLOSING — خذ تفاصيل الطلب (اسم + عنوان + رقم)
+${closingInstruction}
 
 قواعد مهمة:
 - سؤال واحد فقط في كل رسالة
 - لا تذكر أنك AI
-- ابق في الموضوع — مش تبيع فقط
-- إذا طلب الزبون صور المنتج (قال: صور، صورة، نشوف، show me، photo، image)، ضع [SEND_IMAGES] في ردك
-- إذا أكد الطلب أضف في آخر ردك: [ORDER_CONFIRMED]
+- ابق في الموضوع — مش ${isService ? "تحجز" : "تبيع"} فقط
+- إذا طلب الزبون صور (قال: صور، صورة، نشوف، show me، photo، image)، ضع [SEND_IMAGES] في ردك
+- إذا أكد ${isService ? "الحجز" : "الطلب"} أضف في آخر ردك: ${confirmTag}
 - حدد المرحلة في آخر كل رد: [STAGE:GREETING] أو
   [STAGE:DISCOVERY] أو [STAGE:PITCHING] أو
   [STAGE:OBJECTION] أو [STAGE:CLOSING] أو [STAGE:CLOSED]`
@@ -87,15 +122,16 @@ ${objectionsList || "تعامل مع الاعتراضات بأسلوبك"}
 // توليد رد AI عبر OpenRouter
 export async function generateAIReply({
   agent,
-  products,
+  items,
   objectionReplies,
   conversationHistory,
   userMessage,
-  selectedProduct,
+  selectedItem,
+  isService = false,
 }) {
   try {
     const systemPrompt = buildSystemPrompt(
-      agent, products, objectionReplies, selectedProduct
+      agent, items, objectionReplies, selectedItem, isService
     )
 
     // تحضير المحادثة للـ API
@@ -144,8 +180,9 @@ export async function generateAIReply({
     const stageMatch = reply.match(/\[STAGE:(\w+)\]/)
     const stage = stageMatch ? stageMatch[1] : null
 
-    // التحقق من تأكيد الطلب
-    const orderConfirmed = reply.includes("[ORDER_CONFIRMED]")
+    // التحقق من تأكيد الحجز/الطلب
+    const confirmTag = isService ? "[BOOKING_CONFIRMED]" : "[ORDER_CONFIRMED]"
+    const orderConfirmed = reply.includes(confirmTag) || reply.includes("[ORDER_CONFIRMED]") || reply.includes("[BOOKING_CONFIRMED]")
 
     // التحقق من طلب إرسال صور
     const sendImages = reply.includes("[SEND_IMAGES]")
@@ -154,6 +191,7 @@ export async function generateAIReply({
     const cleanReply = reply
       .replace(/\[STAGE:\w+\]/g, "")
       .replace(/\[ORDER_CONFIRMED\]/g, "")
+      .replace(/\[BOOKING_CONFIRMED\]/g, "")
       .replace(/\[SEND_IMAGES\]/g, "")
       .trim()
 
@@ -212,24 +250,32 @@ export async function processIncomingMessage({
     }
     console.log(`✅ [processIncomingMessage] Agent found: ${agent.id}`)
 
+    // تطبيع رقم الهاتف (منع التكرار)
+    const normalizedPhone = normalizePhone(customerPhone)
+    if (!normalizedPhone) {
+      console.error(`❌ [processIncomingMessage] Invalid phone number: ${customerPhone}`)
+      return { reply: null, skipped: true, imageUrls: [] }
+    }
+    console.log(`📞 [processIncomingMessage] Phone normalized: ${customerPhone} → ${normalizedPhone}`)
+
     // 2. إيجاد أو إنشاء الزبون
     let customer = await prisma.customer.findFirst({
-      where: { userId, phone: customerPhone }
+      where: { userId, phone: normalizedPhone }
     })
-    console.log(`🔍 [processIncomingMessage] Customer lookup: userId=${userId}, phone=${customerPhone}, found=${!!customer}`)
+    console.log(`🔍 [processIncomingMessage] Customer lookup: userId=${userId}, phone=${normalizedPhone}, found=${!!customer}`)
 
     if (!customer) {
       customer = await prisma.customer.create({
         data: {
           userId,
           name: customerName,
-          phone: customerPhone,
+          phone: normalizedPhone,
           tag: "NEW",
         }
       })
-      console.log(`✅ [processIncomingMessage] Created new customer: ${customer.id}, name=${customer.name}, phone=${customer.phone}`)
+      console.log(`✅ [processIncomingMessage] Created new customer: ${customer.id}, name=${customer.name}, phone=${normalizedPhone}`)
     } else {
-      console.log(`✅ [processIncomingMessage] Found existing customer: ${customer.id}, name=${customer.name}, phone=${customer.phone}`)
+      console.log(`✅ [processIncomingMessage] Found existing customer: ${customer.id}, name=${customer.name}, phone=${normalizedPhone}`)
       // تحديث آخر ظهور
       await prisma.customer.update({
         where: { id: customer.id },
@@ -239,19 +285,106 @@ export async function processIncomingMessage({
 
     // 3. إيجاد أو إنشاء محادثة نشطة
     console.log(`🔍 [processIncomingMessage] Looking for conversation: userId=${userId}, customerId=${customer.id}`)
+    
+    // البحث عن أي محادثة نشطة لهذا الزبون (بأي customerId مرتبط بنفس رقم الهاتف)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    
+    // أولاً: نبحث عن محادثات الزبون الحالي
     let conversation = await prisma.conversation.findFirst({
       where: {
         userId,
         customerId: customer.id,
-        stage: { notIn: ["CLOSED", "ABANDONED"] }
+        stage: { notIn: ["CLOSED", "ABANDONED"] },
+        updatedAt: { gte: oneDayAgo }
       },
       include: {
         messages: {
           orderBy: { createdAt: "asc" },
           take: 20
         }
-      }
+      },
+      orderBy: { updatedAt: "desc" }
     })
+    
+    // ثانياً: نبحث عن أي محادثة نشطة أخرى لنفس رقم الهاتف (للزبائن المكررين القدام)
+    if (!conversation) {
+      const duplicateCustomers = await prisma.customer.findMany({
+        where: {
+          userId,
+          phone: normalizedPhone
+        },
+        select: { id: true }
+      })
+      
+      const customerIds = duplicateCustomers.map(c => c.id)
+      
+      if (customerIds.length > 0) {
+        conversation = await prisma.conversation.findFirst({
+          where: {
+            userId,
+            customerId: { in: customerIds },
+            stage: { notIn: ["CLOSED", "ABANDONED"] },
+            updatedAt: { gte: oneDayAgo }
+          },
+          include: {
+            messages: {
+              orderBy: { createdAt: "asc" },
+              take: 20
+            }
+          },
+          orderBy: { updatedAt: "desc" }
+        })
+        
+        // إذا وجدنا محادثة لزبون مكرر، ننقلها للزبون الرئيسي
+        if (conversation && conversation.customerId !== customer.id) {
+          console.log(`🔄 [processIncomingMessage] Reassigning conversation from duplicate customer to primary customer`)
+          await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: { customerId: customer.id }
+          })
+        }
+      }
+    }
+    
+    // ثالثاً: نبحث عن أي محادثة نشطة بدون قيد الوقت
+    if (!conversation) {
+      const duplicateCustomers = await prisma.customer.findMany({
+        where: {
+          userId,
+          phone: normalizedPhone
+        },
+        select: { id: true }
+      })
+      
+      const customerIds = duplicateCustomers.map(c => c.id)
+      
+      if (customerIds.length > 0) {
+        conversation = await prisma.conversation.findFirst({
+          where: {
+            userId,
+            customerId: { in: customerIds },
+            stage: { notIn: ["CLOSED", "ABANDONED"] }
+          },
+          include: {
+            messages: {
+              orderBy: { createdAt: "asc" },
+              take: 20
+            }
+          },
+          orderBy: { updatedAt: "desc" }
+        })
+        
+        // إعادة توجيه المحادثة للزبون الرئيسي
+        if (conversation && conversation.customerId !== customer.id) {
+          console.log(`🔄 [processIncomingMessage] Reassigning conversation from duplicate customer to primary customer`)
+          await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: { customerId: customer.id }
+          })
+        }
+      }
+    }
+    
     console.log(`🔍 [processIncomingMessage] Found conversation: ${conversation?.id || 'NONE'}`)
 
     if (!conversation) {
@@ -278,47 +411,78 @@ export async function processIncomingMessage({
       }
     })
 
-    // 5. جلب المنتجات النشطة والمنتج المحدد
-    const products = await prisma.product.findMany({
-      where: { userId, isActive: true }
-    })
-
-    // جلب المنتج المحدد إذا وجد
-    let selectedProduct = null
-    if (agent.selectedProductId) {
-      selectedProduct = await prisma.product.findUnique({
-        where: { id: agent.selectedProductId }
+    // 5. جلب المنتجات أو الخدمات حسب وضع Agent
+    const isServiceMode = agent.mode === "service"
+    let items = []
+    let selectedItem = null
+    
+    if (isServiceMode) {
+      // وضع الخدمات
+      items = await prisma.service.findMany({
+        where: { userId, isActive: true }
       })
-    }
-
-    // Fallback: إذا لم يكن هناك منتج محدد أو لم توجد صور، استخدم أول منتج نشط له صور
-    if (!selectedProduct || !selectedProduct.images) {
-      selectedProduct = products.find(p => p.images && p.images.trim().length > 0) || null
+      
+      // جلب الخدمة المحددة إذا وجدت
+      if (agent.selectedServiceId) {
+        selectedItem = await prisma.service.findUnique({
+          where: { id: agent.selectedServiceId }
+        })
+      }
+      
+      // Fallback: استخدم أول خدمة نشطة لها صور
+      if (!selectedItem || !selectedItem.images) {
+        selectedItem = items.find(s => s.images && s.images.trim().length > 0) || null
+      }
+    } else {
+      // وضع المنتجات (الافتراضي)
+      items = await prisma.product.findMany({
+        where: { userId, isActive: true }
+      })
+      
+      // جلب المنتج المحدد إذا وجد
+      if (agent.selectedProductId) {
+        selectedItem = await prisma.product.findUnique({
+          where: { id: agent.selectedProductId }
+        })
+      }
+      
+      // Fallback: استخدم أول منتج نشط له صور
+      if (!selectedItem || !selectedItem.images) {
+        selectedItem = items.find(p => p.images && p.images.trim().length > 0) || null
+      }
     }
 
     // 6. توليد رد AI
     const { reply, stage, score, orderConfirmed, sendImages } =
       await generateAIReply({
         agent,
-        products,
+        items,
         objectionReplies: agent.objectionReplies,
         conversationHistory: conversation.messages,
         userMessage: messageText,
-        selectedProduct,
+        selectedItem,
+        isService: isServiceMode,
       })
+
+    // حساب قيمة الطلب/الحجز إذا تم تأكيده
+    let totalAmount = null
+    if (orderConfirmed && selectedItem) {
+      totalAmount = selectedItem.price
+      console.log(`💰 [${normalizedPhone}] ${isServiceMode ? 'حجز' : 'طلب'} مؤكد: ${totalAmount} درهم`)
+    }
 
     // إعداد قائمة الصور للإرسال
     let imageUrls = []
-    console.log("🖼️ sendImages:", sendImages, "selectedProduct:", selectedProduct?.id, "images:", selectedProduct?.images)
-    if (sendImages && selectedProduct) {
-      imageUrls = parseProductImages(selectedProduct.images)
+    console.log("🖼️ sendImages:", sendImages, "selectedItem:", selectedItem?.id, "images:", selectedItem?.images)
+    if (sendImages && selectedItem) {
+      imageUrls = parseImages(selectedItem.images)
       if (imageUrls.length > 0) {
         console.log("✅ Parsed imageUrls:", imageUrls)
       } else {
-        console.warn("⚠️ No valid images found for product:", selectedProduct.id)
+        console.warn("⚠️ No valid images found for item:", selectedItem.id)
       }
-    } else if (sendImages && !selectedProduct) {
-      console.warn("⚠️ Customer requested images but no product available")
+    } else if (sendImages && !selectedItem) {
+      console.warn("⚠️ Customer requested images but no item available")
     }
 
     // 7. حفظ رد Agent
@@ -341,16 +505,19 @@ export async function processIncomingMessage({
         ...(orderConfirmed && {
           stage: "CLOSED",
           score: 100,
+          totalAmount,
         }),
       }
     })
 
     // 9. تحديث الزبون إذا تم البيع
     if (orderConfirmed) {
+      const newTotalSpent = customer.totalSpent + (totalAmount || 0)
       await prisma.customer.update({
         where: { id: customer.id },
         data: {
           ordersCount: { increment: 1 },
+          totalSpent: newTotalSpent,
           tag: customer.ordersCount >= 2 ? "VIP" : "REGULAR",
         }
       })
@@ -361,7 +528,7 @@ export async function processIncomingMessage({
           userId,
           type: "NEW_ORDER",
           title: "طلب جديد! 🎉",
-          message: `${customerName} أكد طلبه`,
+          message: `${customerName} أكد طلبه بقيمة ${totalAmount || 0} درهم`,
         }
       })
     }

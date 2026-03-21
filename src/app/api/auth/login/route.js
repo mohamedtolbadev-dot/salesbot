@@ -1,9 +1,16 @@
 import { prisma } from "@/lib/prisma"
 import { comparePassword, generateToken } from "@/lib/auth"
 import { successResponse, errorResponse } from "@/lib/response"
+import { rateLimit } from "@/lib/rateLimit"
 
 export async function POST(request) {
   try {
+    // Rate limiting - 10 attempts per 15 minutes
+    const rateLimitResult = rateLimit(request, true)
+    if (!rateLimitResult.success) {
+      return errorResponse(`تم تجاوز الحد المسموح به. حاول مرة أخرى بعد ${Math.ceil(rateLimitResult.retryAfter / 60)} دقيقة`, 429)
+    }
+
     const { email, password } = await request.json()
 
     if (!email || !password) {
