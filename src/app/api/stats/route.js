@@ -51,32 +51,38 @@ function calculateAvgResponseTime(conversations) {
   return Math.round(totalResponseTime / responseCount)
 }
 
-// الحصول على بيانات 7 أيام
+// الحصول على بيانات 7 أيام — single query instead of 7 round-trips
 async function getWeeklyChartData(userId) {
-  const days = []
-  const counts = []
   const dayNames = ["أح", "إث", "ثل", "أر", "خم", "جم", "سب"]
 
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+
+  const sevenDaysStart = new Date(startOfToday)
+  sevenDaysStart.setDate(sevenDaysStart.getDate() - 6)
+
+  const rows = await prisma.conversation.findMany({
+    where: {
+      userId,
+      createdAt: { gte: sevenDaysStart },
+      stage: { notIn: ["ARCHIVED"] }
+    },
+    select: { createdAt: true }
+  })
+
+  const counts = Array(7).fill(0)
+  for (const row of rows) {
+    const rowDate = new Date(row.createdAt)
+    rowDate.setHours(0, 0, 0, 0)
+    const diffDays = Math.round((rowDate - sevenDaysStart) / (1000 * 60 * 60 * 24))
+    if (diffDays >= 0 && diffDays < 7) counts[diffDays]++
+  }
+
+  const days = []
   for (let i = 6; i >= 0; i--) {
-    const date = new Date()
-    date.setDate(date.getDate() - i)
-    date.setHours(0, 0, 0, 0)
-
-    const nextDate = new Date(date)
-    nextDate.setDate(nextDate.getDate() + 1)
-
-    const count = await prisma.conversation.count({
-      where: {
-        userId,
-        createdAt: {
-          gte: date,
-          lt: nextDate
-        }
-      }
-    })
-
-    days.push(dayNames[date.getDay()])
-    counts.push(count)
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    days.push(dayNames[d.getDay()])
   }
 
   return { days, counts }
@@ -95,7 +101,8 @@ export async function GET(request) {
     const todayConversations = await prisma.conversation.count({
       where: {
         userId: user.id,
-        createdAt: { gte: today }
+        createdAt: { gte: today },
+        stage: { notIn: ["ARCHIVED"] }
       }
     })
 
@@ -122,7 +129,8 @@ export async function GET(request) {
     const weekConversations = await prisma.conversation.count({
       where: {
         userId: user.id,
-        createdAt: { gte: sevenDaysAgo }
+        createdAt: { gte: sevenDaysAgo },
+        stage: { notIn: ["ARCHIVED"] }
       }
     })
 
@@ -168,14 +176,20 @@ export async function GET(request) {
       })
     }
 
-    // عدد المحادثات في كل مرحلة - استخدام findMany بدلاً من groupBy
-    const allConversations = await prisma.conversation.findMany({
-      where: { userId: user.id },
-      select: { stage: true }
-    })
-    const stageMap = {}
-    for (const conv of allConversations) {
-      stageMap[conv.stage] = (stageMap[conv.stage] || 0) + 1
+    // عدد المحادثات في كل مرحلة — 5 parallel counts (no full table scan)
+    const [greetingCount, discoveryCount, pitchingCount, objectionCount, closedCount] = await Promise.all([
+      prisma.conversation.count({ where: { userId: user.id, stage: "GREETING" } }),
+      prisma.conversation.count({ where: { userId: user.id, stage: "DISCOVERY" } }),
+      prisma.conversation.count({ where: { userId: user.id, stage: "PITCHING" } }),
+      prisma.conversation.count({ where: { userId: user.id, stage: "OBJECTION" } }),
+      prisma.conversation.count({ where: { userId: user.id, stage: "CLOSED" } }),
+    ])
+    const stageMap = {
+      GREETING:  greetingCount,
+      DISCOVERY: discoveryCount,
+      PITCHING:  pitchingCount,
+      OBJECTION: objectionCount,
+      CLOSED:    closedCount,
     }
 
     // رضا الزبائن - متوسط score المحادثات المغلقة
@@ -231,6 +245,38 @@ export async function GET(request) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5)
 
+    // ─── إحصائيات المنتجات والخدمات ───
+    const [totalProducts, activeProducts, outOfStockProducts, totalServices, activeServices] = await Promise.all([
+      prisma.product.count({ where: { userId: user.id } }),
+      prisma.product.count({ where: { userId: user.id, isActive: true } }),
+      prisma.product.count({ where: { userId: user.id, stock: 0 } }),
+      prisma.service.count({ where: { userId: user.id } }),
+      prisma.service.count({ where: { userId: user.id, isActive: true } }),
+    ])
+
+    // أكثر المنتجات مبيعاً (من الطلبيات)
+    const ordersByProduct = await prisma.order.groupBy({
+      by: ["productName"],
+      where: { userId: user.id },
+      _count: { id: true },
+      _sum: { totalAmount: true },
+      orderBy: { _count: { id: "desc" } },
+      take: 5,
+    })
+    const topProducts = ordersByProduct.map(p => ({
+      name: p.productName,
+      orders: p._count.id,
+      revenue: Math.round(p._sum.totalAmount || 0),
+    }))
+
+    // أكثر المنتجات التي تسأل عنها الزبائن (AI questions)
+    const topQuestionsProducts = await prisma.product.findMany({
+      where: { userId: user.id, questions: { gt: 0 } },
+      orderBy: { questions: "desc" },
+      take: 5,
+      select: { name: true, questions: true },
+    })
+
     // الحسابات النهائية
     const todayRevenue = todayClosed.reduce((sum, c) => sum + (c.totalAmount || 0), 0)
     const conversionRate = todayConversations > 0
@@ -249,7 +295,7 @@ export async function GET(request) {
       avgOrderValue: todayClosed.length > 0
         ? Math.round(todayRevenue / todayClosed.length)
         : 0,
-      avgResponseTime: avgResponseTime > 0 ? `${avgResponseTime} ث` : "-",
+      avgResponseTime: avgResponseTime > 0 ? avgResponseTime : 0,
       satisfactionRate,
       returnRate,
       objectionReasons: objectionReasons.length > 0 ? objectionReasons : [],
@@ -262,6 +308,17 @@ export async function GET(request) {
       },
       weeklyChart: weeklyData.counts,
       weeklyDays: weeklyData.days,
+      productStats: {
+        total: totalProducts,
+        active: activeProducts,
+        outOfStock: outOfStockProducts,
+      },
+      serviceStats: {
+        total: totalServices,
+        active: activeServices,
+      },
+      topProducts,
+      topQuestionsProducts,
     })
   } catch (error) {
     console.error("GET stats error:", error)

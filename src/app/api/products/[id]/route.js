@@ -31,7 +31,7 @@ export async function PUT(request, { params }) {
 
   try {
     const body = await request.json()
-    const { name, price, description, isActive, images } = body
+    const { name, price, description, isActive, images, stock } = body
 
     const product = await prisma.product.findFirst({
       where: { id, userId: user.id }
@@ -46,6 +46,7 @@ export async function PUT(request, { params }) {
         ...(description !== undefined && { description }),
         ...(isActive !== undefined && { isActive }),
         ...(images !== undefined && { images: JSON.stringify(images) }),
+        ...(stock !== undefined && { stock: Number(stock) }),
       }
     })
 

@@ -15,12 +15,22 @@ export async function GET(request) {
     const stage = searchParams.get("stage")
     const search = searchParams.get("search") || ""
     const page = parseInt(searchParams.get("page") || "1")
-    const limit = parseInt(searchParams.get("limit") || "20")
+    const limit = Math.min(parseInt(searchParams.get("limit") || "20"), 100)
     const skip = (page - 1) * limit
 
     const where = {
       userId: user.id,
-      ...(stage && stage !== "all" && { stage }),
+
+      // استثناء ARCHIVED دائماً
+      // إلا إذا طلب stage محدد بالاسم
+      // التعامل مع CLOSED_ONLY → تحويله إلى CLOSED
+      ...(!stage || stage === "all"
+        ? { stage: { notIn: ["ARCHIVED"] } }
+        : stage === "CLOSED_ONLY"
+          ? { stage: "CLOSED" }
+          : { stage }
+      ),
+
       ...(search && {
         customer: {
           OR: [

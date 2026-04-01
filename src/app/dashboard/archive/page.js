@@ -39,7 +39,7 @@ function ScoreBar({ score, color, width = "w-10" }) {
           style={{ width: `${score}%`, backgroundColor: color }}
         />
       </div>
-      <span className="text-[10px] font-bold tabular-nums" style={{ color }}>{score}%</span>
+      <span className="text-[11px] font-bold tabular-nums" style={{ color }}>{score}%</span>
     </div>
   )
 }
@@ -80,10 +80,10 @@ function ConvCard({ conv, stage, scoreColor, onRestore, onDelete }) {
             <div className="flex items-center gap-1.5">
               <span className="text-[12px] font-bold text-foreground truncate">{conv.customer?.name}</span>
             </div>
-            <span className="text-[10px] text-muted-foreground">{conv.customer?.phone}</span>
+            <span className="text-[11px] text-muted-foreground">{conv.customer?.phone}</span>
           </div>
         </div>
-        <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">{timeAgo(conv.updatedAt)}</span>
+        <span className="text-[11px] text-muted-foreground shrink-0 mt-0.5">{timeAgo(conv.updatedAt)}</span>
       </div>
 
       {/* Last message */}
@@ -93,7 +93,7 @@ function ConvCard({ conv, stage, scoreColor, onRestore, onDelete }) {
 
       {/* Footer */}
       <div className="flex items-center justify-between">
-        <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-md border", stage.className)}>
+        <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-md border", stage.className)}>
           {stage.label}
         </span>
         <ScoreBar score={conv.score} color={scoreColor} />

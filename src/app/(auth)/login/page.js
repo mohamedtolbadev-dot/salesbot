@@ -6,6 +6,7 @@ import Script from "next/script"
 import Link from "next/link"
 import { authAPI } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { useLanguage } from "@/contexts/LanguageContext"
 import { Loader2, Eye, EyeOff, Mail, Lock, ArrowLeft } from "lucide-react"
 
 // Google Icon Component - Brand Colors
@@ -22,6 +23,7 @@ function GoogleIcon({ size = 20 }) {
 
 export default function LoginPage() {
   const router = useRouter()
+  const { t } = useLanguage()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -29,17 +31,24 @@ export default function LoginPage() {
   const [error, setError] = useState(null)
   const [showPassword, setShowPassword] = useState(false)
 
-  // Initialize Google Sign-In
+  // Initialize Google Sign-In - with mobile check
   useEffect(() => {
     const GOOGLE_CLIENT_ID = "919613509554-k84i3jqdmviv7dj9gqmhkh8ffj0tepcg.apps.googleusercontent.com"
     
+    // Check if mobile
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    
     const initGoogle = () => {
       if (typeof window !== "undefined" && window.google && GOOGLE_CLIENT_ID) {
-        console.log("Initializing Google Sign-In...")
+        console.log("Initializing Google Sign-In...", isMobile ? "(Mobile detected)" : "(Desktop)")
         try {
           window.google.accounts.id.initialize({
             client_id: GOOGLE_CLIENT_ID,
             callback: handleGoogleResponse,
+            // Disable auto-select on mobile to prevent white space issues
+            auto_select: !isMobile,
+            // Use redirect mode on mobile instead of popup
+            ux_mode: isMobile ? "redirect" : "popup",
           })
           console.log("Google Sign-In initialized successfully")
         } catch (err) {
@@ -72,7 +81,7 @@ export default function LoginPage() {
       // Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
-      setError(err.message || "فشل في تسجيل الدخول بواسطة Google")
+      setError(err.message || t('auth.google_error'))
     } finally {
       setGoogleLoading(false)
     }
@@ -82,7 +91,7 @@ export default function LoginPage() {
     e.preventDefault()
     
     if (!email || !password) {
-      setError("الإيميل وكلمة المرور مطلوبان")
+      setError(t('auth.required_fields'))
       return
     }
 
@@ -99,7 +108,7 @@ export default function LoginPage() {
       // Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
-      setError(err.message || "فشل في تسجيل الدخول")
+      setError(err.message || t('auth.login_error'))
     } finally {
       setLoading(false)
     }
@@ -142,7 +151,7 @@ export default function LoginPage() {
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-600 transition-colors"
           >
             <ArrowLeft size={16} />
-            العودة للرئيسية
+            {t('auth.back_home')}
           </Link>
         </div>
 
@@ -155,8 +164,8 @@ export default function LoginPage() {
               <Mail size={20} className="text-brand-600" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">تسجيل الدخول</h1>
-              <p className="text-xs text-muted-foreground mt-0.5">أدخل بياناتك للوصول للوحة التحكم</p>
+              <h1 className="text-xl font-bold text-foreground">{t('auth.login')}</h1>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('auth.login_subtitle')}</p>
             </div>
           </div>
 
@@ -172,9 +181,22 @@ export default function LoginPage() {
           <button
             onClick={() => {
               if (window.google) {
-                window.google.accounts.id.prompt()
+                // Check if mobile
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+                if (isMobile) {
+                  // On mobile, use redirect flow instead of prompt
+                  window.google.accounts.id.prompt((notification) => {
+                    if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+                      // If One Tap is not displayed, try redirect
+                      window.google.accounts.id.disableAutoSelect()
+                    }
+                  })
+                } else {
+                  // Desktop: use normal prompt
+                  window.google.accounts.id.prompt()
+                }
               } else {
-                setError("جاري تحميل Google Sign-In... حاول مرة أخرى")
+                setError(t('auth.google_loading'))
               }
             }}
             disabled={googleLoading}
@@ -188,7 +210,7 @@ export default function LoginPage() {
             ) : (
               <GoogleIcon size={22} />
             )}
-            <span className="text-lg">الدخول بحساب Google</span>
+            <span className="text-lg">{t('auth.google')}</span>
           </button>
 
           {/* Divider */}
@@ -197,14 +219,14 @@ export default function LoginPage() {
               <div className="w-full border-t border-border" />
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="bg-card px-2 text-muted-foreground">أو</span>
+              <span className="bg-card px-2 text-muted-foreground">{t('auth.or')}</span>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {/* Email Field */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">البريد الإلكتروني</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.email')}</label>
               <div className="relative group">
                 <Mail size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-brand-600 transition-colors" />
                 <input
@@ -220,7 +242,7 @@ export default function LoginPage() {
 
             {/* Password Field */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">كلمة المرور</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.password')}</label>
               <div className="relative group">
                 <Lock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-brand-600 transition-colors" />
                 <input
@@ -254,10 +276,10 @@ export default function LoginPage() {
               {loading ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  جاري الدخول...
-                </>
+                  {t('auth.login_loading')}
+               </>
               ) : (
-                "تسجيل الدخول"
+                t('auth.login')
               )}
             </button>
           </form>
@@ -265,12 +287,12 @@ export default function LoginPage() {
           {/* Footer Link */}
           <div className="mt-6 pt-5 border-t border-border text-center">
             <p className="text-sm text-muted-foreground">
-              ليس لديك حساب؟{" "}
+              {t('auth.no_account')}{" "}
               <Link 
                 href="/register" 
                 className="text-brand-600 font-semibold hover:text-brand-800 transition-colors"
               >
-                سجل الآن
+                {t('auth.register_now')}
               </Link>
             </p>
           </div>
@@ -278,7 +300,7 @@ export default function LoginPage() {
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-6">
-          SalesBot.ma - وكيل المبيعات الذكي
+          {t('auth.salesbot_tagline')}
         </p>
       </div>
     </div>

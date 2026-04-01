@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `agents` ADD COLUMN `appointmentConfirmMessage` TEXT NULL,
+    ADD COLUMN `appointmentReminderMessage` TEXT NULL;

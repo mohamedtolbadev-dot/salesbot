@@ -1,7 +1,8 @@
 // تنسيق المبلغ بالدرهم المغربي
-export function formatAmount(amount) {
-  if (amount === undefined || amount === null) return "0 درهم"
-  return amount.toLocaleString("ar-MA") + " درهم"
+export function formatAmount(amount, locale = "ar-MA") {
+  if (amount === undefined || amount === null) return locale === "fr-FR" ? "0 DH" : "0 درهم"
+  const currency = locale === "fr-FR" ? " DH" : " درهم"
+  return amount.toLocaleString(locale) + currency
 }
 
 // وقت نسبي بالعربية
@@ -29,9 +30,29 @@ export function getStageConfig(stage) {
   return configs[stage] || configs.GREETING
 }
 
+// ✅ دالة تعيد label حسب stage + type
+export function getStageLabel(stage, type = "product") {
+  if (stage === "CLOSED") {
+    return type === "service"
+      ? "تم الحجز 📅"
+      : "تم الطلب ✅"
+  }
+  return getStageConfig(stage).label
+}
+
+// ✅ دالة تعيد className حسب stage + type
+export function getStageClassName(stage, type = "product") {
+  if (stage === "CLOSED") {
+    return type === "service"
+      ? "bg-brand-50 text-brand-700 border-brand-200"
+      : "bg-brand-50 text-brand-700 border-brand-200"
+  }
+  return getStageConfig(stage).className
+}
+
 // لون score حسب النسبة
 export function getScoreColor(score) {
-  if (score >= 70) return "#0F6E56"
+  if (score >= 70) return "#534AB7"
   if (score >= 40) return "#BA7517"
   return "#E24B4A"
 }

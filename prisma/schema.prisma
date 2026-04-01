@@ -16,6 +16,7 @@ model User {
   phone         String?
   storeName     String
   plan          Plan           @default(FREE)
+  role          UserRole       @default(USER)
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -26,6 +27,9 @@ model User {
   conversations Conversation[]
   customers     Customer[]
   notifications Notification[]
+  appointments  Appointment[]
+  orders        Order[]
+  invoices      Invoice[]
 
   @@map("users")
 }
@@ -53,6 +57,18 @@ model Agent {
   verifyToken       String?          @default(uuid())
   selectedServiceId String?
   mode              String           @default("product")
+
+  // ✅ رسائل المواعيد التلقائية
+  appointmentConfirmMessage     String? @db.Text
+  appointmentReminderMessage    String? @db.Text
+  appointmentCancellationMessage String? @db.Text
+
+  // ✅ رسائل الطلبيات التلقائية
+  orderConfirmMessage   String? @db.Text
+  orderShipMessage      String? @db.Text
+  orderDeliverMessage   String? @db.Text
+  orderCancelledMessage String? @db.Text
+
   user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   objectionReplies  ObjectionReply[]
 
@@ -81,6 +97,7 @@ model Product {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   images      String?  @db.Text
+  stock       Int      @default(0)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("products")
@@ -99,6 +116,7 @@ model Service {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
 
   @@map("services")
 }
@@ -146,6 +164,8 @@ model Customer {
   updatedAt     DateTime       @updatedAt
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversations Conversation[]
+  appointments  Appointment[]
+  orders        Order[]
 
   @@unique([userId, phone])
   @@map("customers")
@@ -164,10 +184,47 @@ model Notification {
   @@map("notifications")
 }
 
+model Appointment {
+  id                String            @id @default(cuid())
+  userId            String
+  customerId        String?
+  customerName      String
+  customerPhone     String
+  serviceId         String?
+  serviceName       String
+  date              DateTime
+  status            AppointmentStatus @default(PENDING)
+  notes             String?           @db.Text
+  reminderSent      Boolean           @default(false)
+  confirmationSent  Boolean           @default(false)
+  cancellationSent  Boolean           @default(false)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer          Customer?         @relation(fields: [customerId], references: [id])
+  service           Service?          @relation(fields: [serviceId], references: [id])
+
+  @@index([userId, date])
+  @@index([userId, status])
+  @@map("appointments")
+}
+
 enum Plan {
   FREE
   PRO
   ENTERPRISE
+}
+
+enum UserRole {
+  USER
+  SUPER_ADMIN
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
 }
 
 enum ConversationStage {
@@ -178,6 +235,7 @@ enum ConversationStage {
   CLOSING
   CLOSED
   ABANDONED
+  ARCHIVED
 }
 
 enum MessageRole {
@@ -198,4 +256,68 @@ enum NotificationType {
   DAILY_REPORT
   AGENT_DOWN
   SYSTEM
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  userId         String
+  customerId     String?
+  conversationId String?
+  customerName   String
+  customerPhone  String
+  productId      String?
+  productName    String
+  quantity       Int         @default(1)
+  totalAmount    Float
+  status         OrderStatus @default(PENDING)
+  address        String?     @db.Text
+  notes          String?     @db.Text
+  confirmSent    Boolean     @default(false)
+  shipSent       Boolean     @default(false)
+  deliverSent    Boolean     @default(false)
+  trackingNumber String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer       Customer?   @relation(fields: [customerId], references: [id])
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@map("orders")
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  clientId      String
+  invoiceNumber String        @unique
+  amount        Float
+  plan          Plan          @default(FREE)
+  status        InvoiceStatus @default(PENDING)
+  dueDate       DateTime
+  paidAt        DateTime?
+  notes         String?       @db.Text
+  bankInfo      String?       @db.Text
+  whatsappSent  Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  client        User          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([status])
+  @@map("invoices")
 }

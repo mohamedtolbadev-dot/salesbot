@@ -11,11 +11,15 @@ export async function POST(request) {
       return errorResponse(`تم تجاوز الحد المسموح به. حاول مرة أخرى بعد ${Math.ceil(rateLimitResult.retryAfter / 60)} دقيقة`, 429)
     }
 
-    const { name, email, password, phone, storeName } =
-      await request.json()
+    const raw = await request.json()
+    const name  = raw.name?.trim()
+    const email = raw.email?.trim().toLowerCase()
+    const password = raw.password
+    const phone = raw.phone?.trim() || undefined
+    const mode  = raw.mode || "product"
 
     // التحقق من الحقول المطلوبة
-    if (!name?.trim() || !email?.trim() || !password || !storeName?.trim()) {
+    if (!name || !email || !password) {
       return errorResponse("كل الحقول مطلوبة", 400)
     }
 
@@ -26,8 +30,8 @@ export async function POST(request) {
     }
 
     // التحقق من طول كلمة المرور
-    if (password.length < 6) {
-      return errorResponse("كلمة المرور يجب أن تكون 6 أحرف على الأقل", 400)
+    if (password.length < 8) {
+      return errorResponse("كلمة المرور يجب أن تكون 8 أحرف على الأقل", 400)
     }
 
     // التحقق من عدم وجود الإيميل
@@ -48,7 +52,7 @@ export async function POST(request) {
         email,
         password: hashedPassword,
         phone,
-        storeName,
+        storeName: name.trim(),
         agent: {
           create: {
             name: "Agent",
@@ -56,6 +60,7 @@ export async function POST(request) {
             style: "friendly",
             language: "darija",
             isActive: true,
+            mode,
             instructions: "كن ودوداً ومقنعاً دائماً",
             objectionReplies: {
               create: [

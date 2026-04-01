@@ -1,17 +1,24 @@
 import { prisma } from "@/lib/prisma"
 import { generateToken } from "@/lib/auth"
 import { successResponse, errorResponse } from "@/lib/response"
+import { rateLimit } from "@/lib/rateLimit"
 
-// Verify Google ID Token
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ||
+  "919613509554-k84i3jqdmviv7dj9gqmhkh8ffj0tepcg.apps.googleusercontent.com"
+
+// Verify Google ID Token and check audience
 async function verifyGoogleToken(token) {
   try {
     const response = await fetch(
       `https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${token}`
     )
-    if (!response.ok) {
+    if (!response.ok) return null
+    const data = await response.json()
+    // Verify the token was issued for THIS app
+    if (data.aud !== GOOGLE_CLIENT_ID) {
+      console.error("Google token aud mismatch:", data.aud)
       return null
     }
-    const data = await response.json()
     return data
   } catch (error) {
     console.error("Google token verification error:", error)
@@ -21,6 +28,12 @@ async function verifyGoogleToken(token) {
 
 export async function POST(request) {
   try {
+    // Rate limiting
+    const rateLimitResult = rateLimit(request, true)
+    if (!rateLimitResult.success) {
+      return errorResponse(`تم تجاوز الحد. حاول بعد ${Math.ceil(rateLimitResult.retryAfter / 60)} دقيقة`, 429)
+    }
+
     const { token } = await request.json()
 
     if (!token) {
@@ -61,7 +74,7 @@ export async function POST(request) {
           email,
           name: name || email.split("@")[0],
           googleId,
-          storeName: name || "متجري",
+          storeName: name || email.split("@")[0],
         },
         include: { agent: true }
       })
@@ -92,6 +105,7 @@ export async function POST(request) {
         email: user.email,
         storeName: user.storeName,
         plan: user.plan,
+        role: user.role,
         agent: user.agent ? {
           id: user.agent.id,
           name: user.agent.name,

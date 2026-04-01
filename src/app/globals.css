@@ -1,6 +1,13 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Cairo:wght@400;500;600;700&display=swap');
+
 @import "tailwindcss";
 
+* {
+  font-family: "Plus Jakarta Sans", "Cairo", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+}
+
 @theme {
+  --font-sans: "Plus Jakarta Sans", "Cairo", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --color-brand-50:  #E8E6FD;
   --color-brand-100: #D4CFF9;
   --color-brand-200: #AFA9EC;
@@ -11,7 +18,20 @@
   --color-success:   #0F6E56;
   --color-warning:   #BA7517;
   --color-danger:    #E24B4A;
-  --font-arabic: var(--font-arabic), system-ui, sans-serif;
+}
+
+@theme inline {
+  --color-background:         hsl(var(--background));
+  --color-foreground:         hsl(var(--foreground));
+  --color-card:               hsl(var(--card));
+  --color-card-foreground:    hsl(var(--card-foreground));
+  --color-primary:            hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary:          hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted:              hsl(var(--muted));
+  --color-muted-foreground:   hsl(var(--muted-foreground));
+  --color-border:             hsl(var(--border));
 }
 
 :root {
@@ -26,7 +46,7 @@
   --muted: 249 20% 96%;
   --muted-foreground: 240 3.8% 46.1%;
   --border: 249 30% 90%;
-  --radius: 0.75rem; /* 12px - unified border-radius */
+  --radius: 0.75rem;
   --modal-surface: #ffffff;
   --brand-primary: #534AB7;
   --brand-vibrant: #534AB7;
@@ -57,8 +77,8 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: var(--font-arabic), "Cairo", system-ui, sans-serif;
     font-size: 15px;
+    font-family: "Plus Jakarta Sans", "Cairo", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     font-feature-settings: "kern" 1, "tnum" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -66,24 +86,30 @@
   }
 
   html {
-    font-family: var(--font-arabic), "IBM Plex Sans Arabic", system-ui, sans-serif;
+    font-family: "Plus Jakarta Sans", "Cairo", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-weight: 600;
-    line-height: 1.35;
-    letter-spacing: -0.01em;
-  }
+  h1 { font-size: 28px; font-weight: 600; line-height: 1.25; letter-spacing: -0.02em; }
+  h2 { font-size: 22px; font-weight: 600; line-height: 1.3;  letter-spacing: -0.01em; }
+  h3 { font-size: 18px; font-weight: 500; line-height: 1.35; letter-spacing: -0.01em; }
+  h4, h5, h6 { font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; }
 
-  p, span, li {
+  p, span, li, td, th {
+    font-size: 14px;
     line-height: 1.7;
     font-weight: 400;
   }
 
   label, button, input, textarea, select {
     font-family: inherit;
+    font-size: 14px;
     font-weight: 500;
     line-height: 1.5;
+  }
+
+  nav a, aside a {
+    font-size: 14px;
+    font-weight: 500;
   }
 
   .tabular-nums,
@@ -94,8 +120,8 @@
   }
 }
 
-.text-ui-xs    { font-size: 0.75rem;  line-height: 1.5;  font-weight: 500; }  /* 12px */
+.text-ui-xs    { font-size: 0.75rem;   line-height: 1.5;  font-weight: 500; }  /* 12px */
 .text-ui-sm    { font-size: 0.8125rem; line-height: 1.5;  font-weight: 500; }  /* 13px */
 .text-ui-base  { font-size: 0.9375rem; line-height: 1.55; font-weight: 400; }  /* 15px */
-.text-ui-md    { font-size: 1rem;      line-height: 1.55; font-weight: 400; }   /* 16px */
-.text-ui-label { font-size: 0.75rem;  line-height: 1.4;  font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; } /* 12px */
+.text-ui-md    { font-size: 1rem;      line-height: 1.55; font-weight: 400; }  /* 16px */
+.text-ui-label { font-size: 0.75rem;   line-height: 1.4;  font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; } /* 12px */

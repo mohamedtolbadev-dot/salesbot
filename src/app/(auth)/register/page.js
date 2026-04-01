@@ -6,7 +6,8 @@ import Script from "next/script"
 import Link from "next/link"
 import { authAPI } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { Loader2, User, Store, Mail, Lock, ArrowLeft, CheckCircle } from "lucide-react"
+import { useLanguage } from "@/contexts/LanguageContext"
+import { Loader2, User, Mail, Lock, ArrowLeft, CheckCircle, ShoppingBag, Wrench } from "lucide-react"
 
 // Google Icon Component - Brand Colors
 function GoogleIcon({ size = 20 }) {
@@ -22,11 +23,12 @@ function GoogleIcon({ size = 20 }) {
 
 export default function RegisterPage() {
   const router = useRouter()
+  const { t } = useLanguage()
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
-    storeName: "",
+    mode: "product",
   })
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
@@ -68,7 +70,7 @@ export default function RegisterPage() {
       // Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
-      setError(err.message || "فشل في تسجيل الدخول بواسطة Google")
+      setError(err.message || t('auth.google_error'))
     } finally {
       setGoogleLoading(false)
     }
@@ -77,8 +79,12 @@ export default function RegisterPage() {
   async function handleSubmit(e) {
     e.preventDefault()
     
-    if (!formData.name || !formData.email || !formData.password || !formData.storeName) {
-      setError("جميع الحقول مطلوبة")
+    if (!formData.name || !formData.email || !formData.password) {
+      setError(t('auth.required_all'))
+      return
+    }
+    if (formData.password.length < 8) {
+      setError(t('auth.password_min'))
       return
     }
 
@@ -95,7 +101,7 @@ export default function RegisterPage() {
       // Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
-      setError(err.message || "فشل في إنشاء الحساب")
+      setError(err.message || t('auth.register_error'))
     } finally {
       setLoading(false)
     }
@@ -134,7 +140,7 @@ export default function RegisterPage() {
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-600 transition-colors"
           >
             <ArrowLeft size={16} />
-            العودة للرئيسية
+            {t('auth.back_home')}
           </Link>
         </div>
 
@@ -147,8 +153,8 @@ export default function RegisterPage() {
               <User size={20} className="text-brand-600" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">إنشاء حساب</h1>
-              <p className="text-xs text-muted-foreground mt-0.5">ابدأ رحلتك مع SalesBot.ma</p>
+              <h1 className="text-xl font-bold text-foreground">{t('auth.register')}</h1>
+              <p className="text-xs text-muted-foreground mt-0.5">{t('auth.register_subtitle')}</p>
             </div>
           </div>
 
@@ -166,7 +172,7 @@ export default function RegisterPage() {
               if (window.google) {
                 window.google.accounts.id.prompt()
               } else {
-                setError("جاري تحميل Google Sign-In... حاول مرة أخرى")
+                setError(t('auth.google_loading'))
               }
             }}
             disabled={googleLoading}
@@ -180,7 +186,7 @@ export default function RegisterPage() {
             ) : (
               <GoogleIcon size={22} />
             )}
-            <span className="text-lg">التسجيل بحساب Google</span>
+            <span className="text-lg">{t('auth.register_google')}</span>
           </button>
 
           {/* Divider */}
@@ -189,14 +195,14 @@ export default function RegisterPage() {
               <div className="w-full border-t border-border" />
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="bg-card px-2 text-muted-foreground">أو</span>
+              <span className="bg-card px-2 text-muted-foreground">{t('auth.or')}</span>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {/* Name Field */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">الاسم الكامل</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.full_name')}</label>
               <div className="relative group">
                 <User size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-brand-600 transition-colors" />
                 <input
@@ -204,31 +210,48 @@ export default function RegisterPage() {
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
-                  placeholder="مثال: أحمد محمد"
+                  placeholder={t('auth.name_placeholder')}
                   className="w-full pr-10 pl-4 py-2.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-brand-400 transition-all"
                 />
               </div>
             </div>
 
-            {/* Store Name Field */}
+            {/* Mode Select */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">اسم المتجر</label>
-              <div className="relative group">
-                <Store size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-brand-600 transition-colors" />
-                <input
-                  type="text"
-                  name="storeName"
-                  value={formData.storeName}
-                  onChange={handleChange}
-                  placeholder="مثال: بوتيك الأناقة"
-                  className="w-full pr-10 pl-4 py-2.5 bg-background border border-border rounded-lg text-sm outline-none focus:border-brand-400 transition-all"
-                />
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.activity_type')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData(p => ({ ...p, mode: "product" }))}
+                  className={cn(
+                    "flex flex-col items-center gap-2 py-3 rounded-xl border text-sm font-medium transition-all",
+                    formData.mode === "product"
+                      ? "border-brand-600 bg-brand-600/10 text-brand-700"
+                      : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  )}
+                >
+                  <ShoppingBag size={18} />
+                  {t('auth.mode_products')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData(p => ({ ...p, mode: "service" }))}
+                  className={cn(
+                    "flex flex-col items-center gap-2 py-3 rounded-xl border text-sm font-medium transition-all",
+                    formData.mode === "service"
+                      ? "border-brand-600 bg-brand-600/10 text-brand-700"
+                      : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  )}
+                >
+                  <Wrench size={18} />
+                  {t('auth.mode_services')}
+                </button>
               </div>
             </div>
 
             {/* Email Field */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">البريد الإلكتروني</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.email')}</label>
               <div className="relative group">
                 <Mail size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-brand-600 transition-colors" />
                 <input
@@ -245,7 +268,7 @@ export default function RegisterPage() {
 
             {/* Password Field */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">كلمة المرور</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.password')}</label>
               <div className="relative group">
                 <Lock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-brand-600 transition-colors" />
                 <input
@@ -273,12 +296,12 @@ export default function RegisterPage() {
               {loading ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  جاري الإنشاء...
+                  {t('auth.creating')}
                 </>
               ) : (
                 <>
                   <CheckCircle size={16} />
-                  إنشاء حساب
+                  {t('auth.register')}
                 </>
               )}
             </button>
@@ -287,12 +310,12 @@ export default function RegisterPage() {
           {/* Footer Link */}
           <div className="mt-6 pt-5 border-t border-border text-center">
             <p className="text-sm text-muted-foreground">
-              لديك حساب بالفعل؜{" "}
+              {t('auth.has_account')}{" "}
               <Link 
                 href="/login" 
                 className="text-brand-600 font-semibold hover:text-brand-800 transition-colors"
               >
-                سجل الدخول
+                {t('auth.login_link')}
               </Link>
             </p>
           </div>
@@ -300,7 +323,7 @@ export default function RegisterPage() {
 
         {/* Footer */}
         <p className="text-center text-xs text-muted-foreground mt-6">
-          SalesBot.ma - وكيل المبيعات الذكي
+          {t('auth.salesbot_tagline')}
         </p>
       </div>
     </div>

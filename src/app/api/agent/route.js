@@ -42,7 +42,14 @@ export async function PUT(request) {
       selectedProductId, selectedServiceId,
       mode,
       workHoursEnabled, workStart, workEnd, offlineMessage,
-      welcomeMessage, postSaleMessage
+      welcomeMessage, postSaleMessage,
+      appointmentConfirmMessage,
+      appointmentReminderMessage,
+      appointmentCancellationMessage,
+      orderConfirmMessage,
+      orderShipMessage,
+      orderDeliverMessage,
+      orderCancelledMessage,
     } = body
 
     const agent = await prisma.agent.update({
@@ -56,8 +63,16 @@ export async function PUT(request) {
         ...(instructions !== undefined && { instructions }),
         ...(whatsappPhoneId !== undefined && { whatsappPhoneId }),
         ...(whatsappToken !== undefined && { whatsappToken }),
-        ...(selectedProductId !== undefined && { selectedProductId }),
-        ...(selectedServiceId !== undefined && { selectedServiceId }),
+        // ✅ "" تتحول null — لا تحفظ string فارغة في DB
+        // aiAgent.js يتحقق بـ if(agent.selectedProductId)
+        // null = falsy مقبول، لكن "" = falsy أيضاً والفرق
+        // أن null في Prisma يعني "غير محدد" بشكل صريح
+        ...(selectedProductId !== undefined && {
+          selectedProductId: selectedProductId || null
+        }),
+        ...(selectedServiceId !== undefined && {
+          selectedServiceId: selectedServiceId || null
+        }),
         ...(mode !== undefined && { mode }),
         ...(workHoursEnabled !== undefined && { workHoursEnabled }),
         ...(workStart !== undefined && { workStart }),
@@ -65,6 +80,20 @@ export async function PUT(request) {
         ...(offlineMessage !== undefined && { offlineMessage }),
         ...(welcomeMessage !== undefined && { welcomeMessage }),
         ...(postSaleMessage !== undefined && { postSaleMessage }),
+        // ✅ الجديد
+        ...(appointmentConfirmMessage !== undefined && {
+          appointmentConfirmMessage
+        }),
+        ...(appointmentReminderMessage !== undefined && {
+          appointmentReminderMessage
+        }),
+        ...(appointmentCancellationMessage !== undefined && {
+          appointmentCancellationMessage
+        }),
+        ...(orderConfirmMessage !== undefined && { orderConfirmMessage }),
+        ...(orderShipMessage !== undefined && { orderShipMessage }),
+        ...(orderDeliverMessage !== undefined && { orderDeliverMessage }),
+        ...(orderCancelledMessage !== undefined && { orderCancelledMessage }),
       }
     })
 

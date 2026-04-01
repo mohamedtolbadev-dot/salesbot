@@ -1,15 +1,205 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { statsAPI, conversationsAPI, agentAPI } from "@/lib/api"
-import { getStageConfig, getScoreColor, getInitials } from "@/lib/helpers"
+import { getStageConfig, getStageLabel, getStageClassName, getScoreColor, getInitials } from "@/lib/helpers"
+import { cn } from "@/lib/utils"
 import {
   Bot, TrendingUp, Plus, ChevronLeft, MessageCircle,
   BarChart3, Sparkles, ArrowUpRight, ShoppingBag,
   AlertCircle, RefreshCw, Activity, Zap, Settings2,
-  Brain, Star, Globe, Languages,
+  Brain, Star, Globe, Languages, Wrench,
 } from "lucide-react"
+import { useLanguage } from "@/contexts/LanguageContext"
+
+/* ─────────────── Global Effects Styles ─────────────── */
+const globalStyles = `
+  .card-glow {
+    position: relative;
+    overflow: hidden;
+  }
+  .card-glow::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 30% 30%, rgba(83, 74, 183, 0.15) 0%, transparent 50%);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .card-glow:hover::before {
+    opacity: 1;
+  }
+  
+  .shimmer-border {
+    position: relative;
+    background: linear-gradient(135deg, rgba(83, 74, 183, 0.1) 0%, rgba(83, 74, 183, 0.05) 100%);
+    border: 1px solid rgba(83, 74, 183, 0.2);
+    transition: all 0.3s ease;
+  }
+  .shimmer-border:hover {
+    border-color: rgba(83, 74, 183, 0.4);
+    box-shadow: 0 0 20px rgba(83, 74, 183, 0.15), inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+  
+  .glass-purple {
+    background: linear-gradient(135deg, rgba(83, 74, 183, 0.95) 0%, rgba(83, 74, 183, 0.85) 100%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  
+  .glass-purple-strong {
+    background: linear-gradient(145deg, rgba(83, 74, 183, 0.98) 0%, rgba(70, 60, 160, 0.95) 50%, rgba(83, 74, 183, 0.98) 100%);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.2);
+    box-shadow: 
+      0 8px 32px rgba(83, 74, 183, 0.4),
+      inset 0 1px 0 rgba(255,255,255,0.2),
+      inset 0 -1px 0 rgba(0,0,0,0.1);
+  }
+  
+  .float-hover {
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .float-hover:hover {
+    transform: translateY(-4px) scale(1.01);
+  }
+  
+  .icon-pulse {
+    position: relative;
+  }
+  .icon-pulse::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: rgba(83, 74, 183, 0.2);
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.3s ease;
+  }
+  .group:hover .icon-pulse::after {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+  
+  .gradient-text {
+    background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.8) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .shine-effect {
+    position: relative;
+    overflow: hidden;
+  }
+  .shine-effect::after {
+    content: '';
+    position: absolute;
+    top: -100%;
+    left: -100%;
+    width: 50%;
+    height: 200%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255,255,255,0.1),
+      transparent
+    );
+    transform: rotate(25deg);
+    transition: all 0.6s ease;
+  }
+  .shine-effect:hover::after {
+    left: 150%;
+  }
+  
+  .ripple-btn {
+    position: relative;
+    overflow: hidden;
+  }
+  .ripple-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), rgba(255,255,255,0.3) 0%, transparent 60%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .ripple-btn:hover::before {
+    opacity: 1;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-6px); }
+  }
+  
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(83, 74, 183, 0.3); }
+    50% { box-shadow: 0 0 40px rgba(83, 74, 183, 0.5), 0 0 60px rgba(83, 74, 183, 0.2); }
+  }
+  
+  @keyframes border-glow {
+    0%, 100% { border-color: rgba(83, 74, 183, 0.3); }
+    50% { border-color: rgba(83, 74, 183, 0.6); }
+  }
+  
+  @keyframes slide-in-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  .animate-glow-pulse {
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+  
+  .animate-border-glow {
+    animation: border-glow 2s ease-in-out infinite;
+  }
+  
+  .slide-in {
+    animation: slide-in-up 0.5s ease-out forwards;
+  }
+  
+  .stat-icon-bg {
+    background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%);
+    box-shadow: 
+      inset 0 1px 0 rgba(255,255,255,0.3),
+      0 4px 12px rgba(0,0,0,0.1);
+  }
+  
+  .progress-glow {
+    box-shadow: 0 0 10px rgba(83, 74, 183, 0.5);
+  }
+  
+  .table-row-hover {
+    position: relative;
+    transition: all 0.2s ease;
+  }
+  .table-row-hover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(83, 74, 183, 0.03), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .table-row-hover:hover::before {
+    opacity: 1;
+  }
+`;
 
 /* ─────────────── Animated Counter ─────────────── */
 function AnimatedNumber({ value, suffix = "" }) {
@@ -29,7 +219,7 @@ function AnimatedNumber({ value, suffix = "" }) {
     raf.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf.current)
   }, [value])
-  return <>{display.toLocaleString("ar-MA")}{suffix}</>
+  return <>{display.toLocaleString()}{suffix}</>
 }
 
 /* ─────────────── Score Bar ─────────────── */
@@ -42,7 +232,7 @@ function ScoreBar({ score, color }) {
           style={{ width: `${score}%`, backgroundColor: color }}
         />
       </div>
-      <span className="text-[11px] font-bold tabular-nums" style={{ color }}>{score}%</span>
+      <span className="text-[13px] font-bold tabular-nums" style={{ color }}>{score}%</span>
     </div>
   )
 }
@@ -56,18 +246,18 @@ function FunnelBar({ label, count, pct, delay }) {
   }, [delay])
   return (
     <div className="flex items-center gap-3 py-1.5 px-1 rounded-lg hover:bg-secondary/40 transition-colors duration-200 cursor-default group">
-      <span className="text-[11px] text-muted-foreground font-medium min-w-[50px] group-hover:text-foreground transition-colors">{label}</span>
+      <span className="text-[13px] text-muted-foreground font-medium min-w-[50px] group-hover:text-foreground transition-colors">{label}</span>
       <div className="flex-1 h-[3px] bg-border rounded-full overflow-hidden">
         <div
           className="h-full rounded-full"
           style={{
-            backgroundColor: "var(--brand-600, #534AB7)",
+            backgroundColor: "var(--color-brand-600)",
             width: animated ? pct : "0%",
             transition: "width 0.8s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         />
       </div>
-      <span className="text-[11px] font-bold text-foreground min-w-[18px] text-left">{count}</span>
+      <span className="text-[13px] font-bold text-foreground min-w-[18px] text-left">{count}</span>
     </div>
   )
 }
@@ -82,9 +272,8 @@ function StatCard({ icon: Icon, label, value, badge, badgeVariant = "default", d
 
   return (
     <div
-      className="group rounded-xl p-4 overflow-hidden cursor-default transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5"
+      className="group rounded-xl p-3.5 sm:p-5 overflow-hidden cursor-default transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 bg-brand-600"
       style={{
-        backgroundColor: "#534AB7",
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(12px)",
         transition: "opacity 0.45s ease, transform 0.45s ease",
@@ -92,18 +281,18 @@ function StatCard({ icon: Icon, label, value, badge, badgeVariant = "default", d
     >
       <div className="flex items-start justify-between mb-4">
         <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
-          <Icon size={15} className="text-white" />
+          <Icon size={17} className="text-white" />
         </div>
         {badge && (
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-white/15 border border-white/20 text-white/90">
+          <span className="text-[13px] font-semibold px-2 py-0.5 rounded-md bg-white/15 border border-white/20 text-white/90">
             {badge}
           </span>
         )}
       </div>
-      <p className="text-2xl font-bold tracking-tight text-white tabular-nums">
+      <p className="text-2xl sm:text-3xl font-bold tracking-tight text-white tabular-nums">
         <AnimatedNumber value={typeof value === "number" ? value : 0} />
       </p>
-      <p className="text-[11px] text-white/70 mt-1 font-medium">{label}</p>
+      <p className="text-[13px] text-white/70 mt-1 font-medium">{label}</p>
       <div className="mt-3 h-[2px] w-0 bg-white/50 rounded-full group-hover:w-full transition-all duration-500 ease-out" />
     </div>
   )
@@ -112,11 +301,166 @@ function StatCard({ icon: Icon, label, value, badge, badgeVariant = "default", d
 /* ─────────────── Agent Info Chip ─────────────── */
 function AgentChip({ icon: Icon, label, value }) {
   return (
-    <div className="flex items-center gap-2 bg-white/8 hover:bg-white/14 border border-white/12 rounded-lg px-3 py-2 transition-colors duration-200 cursor-default">
+    <div className="flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg px-3 py-2 transition-colors duration-200 cursor-default">
       <Icon size={11} className="text-white/50 shrink-0" />
       <div className="min-w-0">
-        <p className="text-[9px] text-white/45 leading-none mb-0.5">{label}</p>
-        <p className="text-[11px] font-semibold text-white truncate leading-tight">{value}</p>
+        <p className="text-[11px] text-white/40 leading-none mb-0.5">{label}</p>
+        <p className="text-[13px] font-semibold text-white truncate leading-tight">{value}</p>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────── Dashboard Skeleton ─────────────── */
+function Bone({ className }) {
+  return <div className={`animate-pulse bg-secondary rounded-lg ${className}`} />
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="flex flex-col gap-5">
+
+      {/* 1. Header */}
+      <div className="flex justify-between items-center">
+        <div className="flex flex-col gap-1.5">
+          <Bone className="h-5 w-32" />
+          <Bone className="h-3 w-48 hidden sm:block" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Bone className="h-8 w-28 rounded-lg hidden sm:block" />
+          <Bone className="h-8 w-24 rounded-lg hidden sm:block" />
+          <Bone className="h-8 w-24 rounded-lg" />
+        </div>
+      </div>
+
+      {/* 2. Stats — 4 purple-tinted cards matching bg-brand-600 */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-brand-600/15 border border-brand-600/20 rounded-xl p-4 sm:p-5 flex flex-col gap-3">
+            <div className="flex items-start justify-between">
+              <Bone className="w-8 h-8 rounded-lg" />
+              <Bone className="w-12 h-5 rounded-md" />
+            </div>
+            <Bone className="h-8 w-20" />
+            <Bone className="h-3 w-28" />
+          </div>
+        ))}
+      </div>
+
+      {/* 3. Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* Conversations panel */}
+        <div className="lg:col-span-2 bg-card border border-border rounded-xl overflow-hidden">
+          {/* Panel header row */}
+          <div className="flex items-center justify-between px-4 py-3.5 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Bone className="w-7 h-7 rounded-lg" />
+              <Bone className="w-28 h-4" />
+              <Bone className="w-14 h-5 rounded-md hidden sm:block" />
+            </div>
+            <Bone className="w-16 h-3" />
+          </div>
+          {/* Filter tabs */}
+          <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-border">
+            <Bone className="w-14 h-7 rounded-lg" />
+            <Bone className="w-20 h-7 rounded-lg" />
+            <Bone className="w-20 h-7 rounded-lg" />
+          </div>
+          {/* Table header — desktop only */}
+          <div className="hidden md:flex items-center gap-4 px-4 py-2.5 bg-secondary border-b border-border">
+            {[28, 40, 20, 16].map((w, i) => (
+              <Bone key={i} className={`h-3 shrink-0`} style={{ width: `${w * 4}px`, flex: i === 1 ? 1 : "none" }} />
+            ))}
+          </div>
+          {/* Rows */}
+          <div className="divide-y divide-border">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3.5">
+                <Bone className="w-8 h-8 rounded-full shrink-0" />
+                <div className="flex-1 flex flex-col gap-1.5">
+                  <Bone className="h-3 w-24" />
+                  <Bone className="h-3 w-36" />
+                </div>
+                <Bone className="w-16 h-5 rounded-md shrink-0 hidden md:block" />
+                <Bone className="w-14 h-3 rounded-full shrink-0 hidden md:block" />
+                <Bone className="w-12 h-5 rounded-md shrink-0 md:hidden" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <div className="flex flex-col gap-4">
+
+          {/* Funnel card */}
+          <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Bone className="w-7 h-7 rounded-lg" />
+              <Bone className="w-28 h-4" />
+            </div>
+            {[100, 74, 47, 26, 17].map((pct, i) => (
+              <div key={i} className="flex items-center gap-3 py-1">
+                <Bone className="w-12 h-3" />
+                <div className="flex-1 h-[3px] bg-border rounded-full overflow-hidden">
+                  <div className="h-full bg-secondary animate-pulse rounded-full" style={{ width: `${pct}%` }} />
+                </div>
+                <Bone className="w-5 h-3 shrink-0" />
+              </div>
+            ))}
+            <div className="mt-1 pt-3 border-t border-border flex items-center justify-between">
+              <Bone className="h-3 w-28" />
+              <Bone className="h-3 w-10" />
+            </div>
+          </div>
+
+          {/* Agent card */}
+          <div className="bg-brand-600/15 border border-brand-600/20 rounded-xl overflow-hidden">
+            <div className="p-4 sm:p-5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Bone className="w-10 h-10 rounded-full" />
+                  <div className="flex flex-col gap-1.5">
+                    <Bone className="w-24 h-4" />
+                    <Bone className="w-16 h-3" />
+                  </div>
+                </div>
+                <Bone className="w-16 h-5 rounded-full" />
+              </div>
+              <div className="h-px bg-border/40" />
+              <div className="grid grid-cols-2 gap-2">
+                {[...Array(4)].map((_, i) => <Bone key={i} className="h-10 rounded-lg" />)}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between">
+                  <Bone className="h-3 w-24" />
+                  <Bone className="h-3 w-10" />
+                </div>
+                <Bone className="h-1 w-full rounded-full" />
+              </div>
+            </div>
+            <Bone className="h-9 w-full rounded-none" />
+          </div>
+
+          {/* Quick Actions Strip */}
+          <div className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-2">
+            <div className="flex-1 flex flex-col items-center gap-1.5 py-2">
+              <Bone className="w-5 h-5 rounded-md" />
+              <Bone className="w-14 h-3" />
+            </div>
+            <div className="w-px h-8 bg-border shrink-0" />
+            <div className="flex-1 flex flex-col items-center gap-1.5 py-2">
+              <Bone className="w-5 h-5 rounded-md" />
+              <Bone className="w-14 h-3" />
+            </div>
+            <div className="w-px h-8 bg-border shrink-0" />
+            <div className="flex-1 flex flex-col items-center gap-1.5 py-2">
+              <Bone className="w-5 h-5 rounded-md" />
+              <Bone className="w-14 h-3" />
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
   )
@@ -125,11 +469,24 @@ function AgentChip({ icon: Icon, label, value }) {
 /* ─────────────── Main Page ─────────────── */
 export default function DashboardPage() {
   const router = useRouter()
+  const { t, language } = useLanguage()
   const [stats, setStats] = useState(null)
   const [conversations, setConversations] = useState([])
   const [agent, setAgent] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // ✅ فلترة المحادثات حسب النوع
+  const [convFilter, setConvFilter] = useState("all")
+  // "all" | "product" | "service"
+
+  // ✅ فلترة ديناميكية بدون API call
+  const filteredConversations = useMemo(() => {
+    if (convFilter === "all") return conversations
+    if (convFilter === "product") return conversations.filter(c => c.type === "product" || !c.type)
+    if (convFilter === "service") return conversations.filter(c => c.type === "service")
+    return conversations
+  }, [conversations, convFilter])
 
   useEffect(() => { fetchDashboardData() }, [])
 
@@ -145,25 +502,14 @@ export default function DashboardPage() {
       setConversations(conversationsData.data?.conversations || [])
       setAgent(agentData.data)
     } catch (err) {
-      setError("فشل في تحميل البيانات")
+      setError("error")
     } finally {
       setLoading(false)
     }
   }
 
   /* ── Loading skeleton ── */
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-5">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-secondary/60 rounded-xl h-24 animate-pulse" />
-          ))}
-        </div>
-        <div className="bg-secondary/60 rounded-xl h-72 animate-pulse" />
-      </div>
-    )
-  }
+  if (loading) return <DashboardSkeleton />
 
   /* ── Error state ── */
   if (error || !stats) {
@@ -173,56 +519,73 @@ export default function DashboardPage() {
           <AlertCircle size={20} className="text-red-500" />
         </div>
         <div className="text-center">
-          <p className="text-sm font-semibold text-foreground">فشل في تحميل البيانات</p>
-          <p className="text-xs text-muted-foreground mt-1">{error}</p>
+          <p className="text-sm font-semibold text-foreground">{t('common.load_error')}</p>
+          <p className="text-sm text-muted-foreground mt-1">{error}</p>
         </div>
         <button
           onClick={() => window.location.reload()}
-          className="flex items-center gap-2 text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors"
+          className="flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-800 transition-colors"
         >
-          <RefreshCw size={13} />
-          إعادة المحاولة
+          <RefreshCw size={15} />
+          {t('common.retry')}
         </button>
       </div>
     )
   }
 
+  /* ── عدادات الفلاتر ── */
+  const productCount = conversations.filter(c => c.type === "product" || !c.type).length
+  const serviceCount = conversations.filter(c => c.type === "service").length
+
   /* ── Main render ── */
   return (
-    <div className="flex flex-col gap-5" dir="rtl">
+    <div className="flex flex-col gap-5">
 
       {/* ── 1. Header ── */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-base font-bold text-foreground tracking-tight">لوحة التحكم</h1>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            {new Date().toLocaleDateString("ar-MA", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+          <h1 className="text-lg sm:text-2xl font-bold text-foreground tracking-tight">{t('nav.dashboard')}</h1>
+          <p className="text-[13px] text-muted-foreground mt-0.5 hidden sm:block">
+            {new Date().toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR', { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
         </div>
+
+        {/* ✅ 3 أزرار: تخصيص Agent | خدمة جديدة | منتج جديد */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => router.push("/dashboard/settings")}
-            className="flex items-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-xs font-medium text-foreground hover:border-brand-300 hover:text-brand-600 transition-all duration-200"
+            className="flex items-center gap-1.5 border border-border px-3 py-1.5 rounded-lg text-sm font-medium text-foreground hover:border-brand-300 hover:text-brand-600 transition-all duration-200"
           >
-            <Bot size={13} />
-            <span className="hidden sm:inline">تخصيص Agent</span>
+            <Bot size={15} />
+            <span className="hidden sm:inline">{t('dash.customize_agent')}</span>
           </button>
+
+          {/* ✅ زر خدمة جديدة */}
+          <button
+            onClick={() => router.push("/dashboard/services")}
+            className="flex items-center gap-1.5 border border-brand-300 text-brand-600 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-brand-50 transition-all duration-200"
+          >
+            <Wrench size={15} />
+            <span className="hidden sm:inline">{t('dash.new_service')}</span>
+          </button>
+
+          {/* زر منتج جديد */}
           <button
             onClick={() => router.push("/dashboard/products")}
-            className="flex items-center gap-1.5 bg-brand-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-brand-800 transition-colors duration-200 shadow-sm"
+            className="flex items-center gap-1.5 bg-brand-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-brand-800 transition-colors duration-200 shadow-sm"
           >
-            <Plus size={13} />
-            <span className="hidden sm:inline">منتج جديد</span>
+            <Plus size={15} />
+            <span className="hidden sm:inline">{t('dash.new_product')}</span>
           </button>
         </div>
       </div>
 
       {/* ── 2. Stats Row ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={MessageCircle} label="محادثات اليوم" value={stats.todayConversations} badge="+12%" badgeVariant="up" delay={0} />
-        <StatCard icon={ShoppingBag}  label="مبيعات اليوم"   value={stats.todaySales}          badge={`${stats.conversionRate}%`} delay={80} />
-        <StatCard icon={Sparkles}     label="قيد الإقناع"    value={stats.pitching}            badge="Agent" badgeVariant="up" delay={160} />
-        <StatCard icon={BarChart3}    label="إيرادات اليوم"  value={stats.todayRevenue || 0}   badge="د.م" delay={240} />
+        <StatCard icon={MessageCircle} label={t('dash.today_convs')}    value={stats.todayConversations} badge="+12%" badgeVariant="up" delay={0} />
+        <StatCard icon={ShoppingBag}  label={t('dash.today_sales')}     value={stats.todaySales}          badge={`${stats.conversionRate}%`} delay={80} />
+        <StatCard icon={Sparkles}     label={t('dash.pitching')}        value={stats.pitching}            badge="Agent" badgeVariant="up" delay={160} />
+        <StatCard icon={BarChart3}    label={t('dash.today_revenue')}   value={stats.todayRevenue || 0}   badge={t('common.currency')} delay={240} />
       </div>
 
       {/* ── 3. Main Grid ── */}
@@ -231,81 +594,126 @@ export default function DashboardPage() {
         {/* ── Conversations Panel ── */}
         <div className="lg:col-span-2 bg-card border border-border rounded-xl overflow-hidden transition-shadow duration-300 hover:shadow-lg">
 
-          {/* Panel header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center">
-                <MessageCircle size={13} className="text-brand-600" />
+          {/* ✅ Panel header مع فلاتر */}
+          <div className="flex flex-col gap-0 border-b border-border">
+
+            {/* صف العنوان */}
+            <div className="flex items-center justify-between px-4 py-3.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center">
+                  <MessageCircle size={15} className="text-brand-600" />
+                </div>
+                <span className="text-[15px] font-semibold">{t('dash.recent_convs')}</span>
+                <span className="hidden sm:flex items-center justify-center text-[13px] font-semibold text-brand-600 bg-brand-600/10 border border-brand-200 rounded-md px-2 py-0.5">
+                  {stats.todayConversations} {t('dash.today')}
+                </span>
               </div>
-              <span className="text-[13px] font-semibold">آخر المحادثات</span>
-              <span className="hidden sm:flex items-center justify-center text-[10px] font-semibold text-brand-600 bg-brand-600/10 border border-brand-200 rounded-md px-2 py-0.5">
-                {stats.todayConversations} اليوم
-              </span>
+              <button
+                onClick={() => router.push("/dashboard/conversations")}
+                className="flex items-center gap-0.5 text-[13px] font-semibold text-brand-600 hover:text-brand-800 hover:gap-1 transition-all duration-200"
+              >
+                {t('common.view_all')}
+                <ChevronLeft size={12} />
+              </button>
             </div>
-            <button
-              onClick={() => router.push("/dashboard/conversations")}
-              className="flex items-center gap-0.5 text-[11px] font-semibold text-brand-600 hover:text-brand-800 hover:gap-1 transition-all duration-200"
-            >
-              عرض الكل
-              <ChevronLeft size={12} />
-            </button>
+
+            {/* ✅ فلاتر منتجات / خدمات */}
+            <div className="flex items-center gap-1.5 px-4 pb-2.5">
+              {[
+                { key: "all",     label: t('conv.filter_all'),             count: conversations.length },
+                { key: "product", label: `🛍️ ${t('nav.products')}`,  count: productCount },
+                { key: "service", label: `🔧 ${t('nav.services')}`,   count: serviceCount },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setConvFilter(f.key)}
+                  className={cn(
+                    "flex items-center gap-1 px-2.5 py-1 rounded-lg text-[13px] font-semibold border transition-all duration-200",
+                    convFilter === f.key
+                      ? "bg-brand-600 text-white border-brand-600"
+                      : "bg-secondary text-muted-foreground border-border hover:border-brand-300 hover:text-foreground"
+                  )}
+                >
+                  {f.label}
+                  <span className={cn(
+                    "text-[11px] px-1 py-0.5 rounded",
+                    convFilter === f.key
+                      ? "bg-white/20 text-white"
+                      : "bg-border/80 text-muted-foreground"
+                  )}>
+                    {f.count}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Desktop Table — no blurry/semi-transparent header */}
+          {/* Desktop Table */}
           <table className="w-full hidden md:table">
             <thead>
               <tr>
-                <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">الزبون</th>
-                <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">آخر رسالة</th>
-                <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">المرحلة</th>
-                <th className="text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">النتيجة</th>
+                <th className="text-right text-[13px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">{t('common.customer')}</th>
+                <th className="text-right text-[13px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">{t('conv.last_msg')}</th>
+                <th className="text-right text-[13px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">{t('common.stage')}</th>
+                <th className="text-right text-[13px] font-semibold uppercase tracking-wide text-muted-foreground px-4 py-2.5 bg-secondary border-b border-border">{t('common.score')}</th>
               </tr>
             </thead>
             <tbody>
-              {conversations.slice(0, 5).map((conv, idx) => {
+              {filteredConversations.slice(0, 5).map((conv, idx) => {
                 const stage = getStageConfig(conv.stage)
                 const scoreColor = getScoreColor(conv.score)
-                const lastMessage = conv.messages?.[0]?.content || "لا رسائل"
+                const lastMessage = conv.messages?.[0]?.content || t('conv.no_messages')
                 return (
                   <tr
                     key={conv.id}
-                    onClick={() => router.push("/dashboard/conversations")}
+                    onClick={() => router.push(`/dashboard/conversations?id=${conv.id}`)}
                     className="border-t border-border hover:bg-secondary cursor-pointer transition-colors duration-150 group"
                     style={{ animationDelay: `${idx * 60}ms` }}
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <div className="relative shrink-0">
-                          <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-[11px] font-bold text-white">
+                          <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-[13px] font-bold text-white">
                             {getInitials(conv.customer?.name)}
                           </div>
                           {!conv.isRead && (
                             <span className="absolute -top-0.5 -left-0.5 w-2 h-2 rounded-full bg-brand-600 border-2 border-card" />
                           )}
                         </div>
-                        <span className="text-[12px] font-semibold text-foreground group-hover:text-brand-600 transition-colors">
-                          {conv.customer?.name || "زبون"}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className="text-[13px] font-semibold text-foreground truncate">
+                            {conv.customer?.name || t('common.customer')}
+                          </span>
+                          {/* ✅ badge نوع المحادثة */}
+                          {conv.type === "service" && (
+                            <span className="text-[11px] text-brand-600 shrink-0">🔧</span>
+                          )}
+                        </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 max-w-[160px]">
-                      <p className="text-[11px] text-muted-foreground truncate group-hover:text-foreground transition-colors">{lastMessage}</p>
+                    <td className="px-4 py-3.5 max-w-[160px]">
+                      <p className="text-[13px] text-muted-foreground truncate group-hover:text-foreground transition-colors">{lastMessage}</p>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`text-[10px] font-semibold px-2 py-1 rounded-md border ${stage.className}`}>
-                        {stage.label}
+                    <td className="px-4 py-3.5">
+                      <span className={`text-[13px] font-semibold px-2 py-0.5 rounded-md border shrink-0 ${getStageClassName(conv.stage, conv.type)}`}>
+                        {getStageLabel(conv.stage, conv.type)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <ScoreBar score={conv.score} color={scoreColor} />
                     </td>
                   </tr>
                 )
               })}
-              {conversations.length === 0 && (
+              {filteredConversations.length === 0 && (
                 <tr>
-                  <td colSpan="4" className="px-4 py-12 text-center text-[12px] text-muted-foreground">
-                    لا توجد محادثات حالياً
+                  <td colSpan="4" className="px-4 py-12 text-center text-[13px] text-muted-foreground">
+                    {convFilter === "service"
+                      ? t('conv.no_service_convs')
+                      : convFilter === "product"
+                      ? t('conv.no_product_convs')
+                      : t('conv.no_convs')
+                    }
                   </td>
                 </tr>
               )}
@@ -314,17 +722,17 @@ export default function DashboardPage() {
 
           {/* Mobile Cards */}
           <div className="md:hidden divide-y divide-border">
-            {conversations.slice(0, 5).map((conv) => {
+            {filteredConversations.slice(0, 5).map((conv) => {
               const stage = getStageConfig(conv.stage)
               const scoreColor = getScoreColor(conv.score)
               return (
                 <div
                   key={conv.id}
-                  onClick={() => router.push("/dashboard/conversations")}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-secondary active:bg-secondary cursor-pointer transition-colors"
+                  onClick={() => router.push(`/dashboard/conversations?id=${conv.id}`)}
+                  className="flex items-center gap-3 px-4 py-3.5 hover:bg-secondary active:bg-secondary cursor-pointer transition-colors"
                 >
                   <div className="relative shrink-0">
-                    <div className="w-9 h-9 rounded-full bg-brand-600 flex items-center justify-center text-[11px] font-bold text-white">
+                    <div className="w-9 h-9 rounded-full bg-brand-600 flex items-center justify-center text-[13px] font-bold text-white">
                       {getInitials(conv.customer?.name)}
                     </div>
                     {!conv.isRead && (
@@ -333,17 +741,33 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12px] font-semibold text-foreground truncate">{conv.customer?.name || "زبون"}</span>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border shrink-0 ${stage.className}`}>{stage.label}</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-[13px] font-semibold text-foreground truncate">
+                          {conv.customer?.name || t('common.customer')}
+                        </span>
+                        {/* ✅ badge نوع على موبايل */}
+                        {conv.type === "service" && (
+                          <span className="text-[11px] text-brand-600 shrink-0">🔧</span>
+                        )}
+                      </div>
+                      <span className={`text-[13px] font-semibold px-2 py-0.5 rounded-md border shrink-0 ${getStageClassName(conv.stage, conv.type)}`}>
+                        {getStageLabel(conv.stage, conv.type)}
+                      </span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground truncate mt-0.5">{conv.messages?.[0]?.content || "لا رسائل"}</p>
+                    <p className="text-[13px] text-muted-foreground truncate mt-0.5">
+                      {conv.messages?.[0]?.content || t('conv.no_messages')}
+                    </p>
                   </div>
-                  <span className="text-[11px] font-bold shrink-0 tabular-nums" style={{ color: scoreColor }}>{conv.score}%</span>
+                  <span className="text-[13px] font-bold shrink-0 tabular-nums" style={{ color: scoreColor }}>
+                    {conv.score}%
+                  </span>
                 </div>
               )
             })}
-            {conversations.length === 0 && (
-              <p className="px-4 py-10 text-center text-[12px] text-muted-foreground">لا توجد محادثات</p>
+            {filteredConversations.length === 0 && (
+              <p className="px-4 py-10 text-center text-[13px] text-muted-foreground">
+                {convFilter === "service" ? t('conv.no_service_convs') : convFilter === "product" ? t('conv.no_product_convs') : t('conv.no_convs')}
+              </p>
             )}
           </div>
         </div>
@@ -352,98 +776,79 @@ export default function DashboardPage() {
         <div className="flex flex-col gap-4">
 
           {/* Stages Funnel */}
-          <div className="bg-card border border-border rounded-xl p-4 transition-shadow duration-300 hover:shadow-lg group">
+          <div className="bg-card border border-border rounded-xl p-5 transition-shadow duration-300 hover:shadow-lg group">
             <div className="flex items-center gap-2 mb-4">
               <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center transition-transform group-hover:scale-110">
-                <Activity size={13} className="text-brand-600" />
+                <Activity size={15} className="text-brand-600" />
               </div>
-              <p className="text-[13px] font-semibold">مراحل المحادثات</p>
+              <p className="text-[15px] font-semibold">{t('dash.funnel_title')}</p>
             </div>
             <div className="flex flex-col gap-0.5">
               {[
-                { label: "ترحيب",    count: stats.stages?.greeting || 0, pct: "100%", delay: 200 },
-                { label: "استكشاف", count: stats.stages?.discovery || 0, pct: "74%",  delay: 280 },
-                { label: "إقناع",   count: stats.stages?.pitching  || 0, pct: "47%",  delay: 360 },
-                { label: "اعتراض",  count: stats.stages?.objection || 0, pct: "26%",  delay: 440 },
-                { label: "إغلاق",   count: stats.stages?.closed    || 0, pct: "17%",  delay: 520 },
+                { label: t('stage.greeting'),  count: stats.stages?.greeting || 0, pct: "100%", delay: 200 },
+                { label: t('stage.discovery'), count: stats.stages?.discovery || 0, pct: "74%",  delay: 280 },
+                { label: t('stage.pitching'),  count: stats.stages?.pitching  || 0, pct: "47%",  delay: 360 },
+                { label: t('stage.objection'), count: stats.stages?.objection || 0, pct: "26%",  delay: 440 },
+                { label: t('stage.closed'),    count: stats.stages?.closed    || 0, pct: "17%",  delay: 520 },
               ].map(s => (
                 <FunnelBar key={s.label} {...s} />
               ))}
             </div>
             <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground font-medium">معدل الإغلاق</span>
-              <span className="text-[11px] font-bold text-brand-600">{stats.conversionRate}%</span>
+              <span className="text-[13px] text-muted-foreground font-medium">{t('dash.close_rate')}</span>
+              <span className="text-[13px] font-bold text-brand-600">{stats.conversionRate}%</span>
             </div>
           </div>
 
-          {/* ── Agent Card — redesigned ── */}
+          {/* ── Agent Card ── */}
           <div
-            className="rounded-xl overflow-hidden transition-shadow duration-300 hover:shadow-2xl"
-            style={{ backgroundColor: "#534AB7" }}
+            className="rounded-xl overflow-hidden transition-shadow duration-300 hover:shadow-2xl bg-brand-600"
           >
-            {/* Top section */}
             <div className="px-4 pt-4 pb-3">
-
-              {/* Header row */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  {/* Avatar with ring */}
                   <div className="relative">
                     <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center"
-                      style={{ background: "rgba(255,255,255,0.18)", boxShadow: "0 0 0 2px rgba(255,255,255,0.25)" }}
+                      className="w-10 h-10 rounded-full flex items-center justify-center bg-white/20 ring-2 ring-white/25"
                     >
                       <Brain size={18} className="text-white" />
                     </div>
-                    {/* Online dot */}
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2"
-                      style={{ borderColor: "#534AB7" }} />
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-brand-600" />
                   </div>
-
                   <div>
-                    <p className="text-[14px] font-bold text-white leading-tight tracking-tight">
-                      {agent?.name || "ليلى"}
+                    <p className="text-[15px] font-bold text-white leading-tight tracking-tight">
+                      {agent?.name || "Agent"}
                     </p>
-                    <p className="text-[10px] text-white/55 mt-0.5">مساعدة مبيعات ذكية</p>
+                    <p className="text-[13px] text-white/50 mt-0.5">{t('dash.agent_sub')}</p>
                   </div>
                 </div>
-
-                {/* Live pill */}
-                <div
-                  className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
-                  style={{ background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.3)" }}
-                >
+                <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1 bg-emerald-400/15 border border-emerald-400/30">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
                   </span>
-                  <span className="text-[10px] font-semibold text-emerald-300">نشطة</span>
+                  <span className="text-[13px] font-semibold text-emerald-300">{t('common.active')}</span>
                 </div>
               </div>
 
-              {/* Divider */}
-              <div className="h-px mb-3" style={{ background: "rgba(255,255,255,0.1)" }} />
+              <div className="h-px mb-3 bg-white/10" />
 
-              {/* Info chips 2×2 */}
               <div className="grid grid-cols-2 gap-2 mb-3">
-                <AgentChip icon={Globe}     label="المجال"      value={agent?.domain   || "—"} />
-                <AgentChip icon={Languages} label="اللغة"       value={agent?.language || "—"} />
-                <AgentChip icon={Sparkles}  label="الأسلوب"     value={agent?.style    || "—"} />
-                <AgentChip icon={MessageCircle} label="رسائل اليوم"
-                  value={
-                    <AnimatedNumber value={stats?.todayConversations ?? 0} />
-                  }
+                <AgentChip icon={Globe}         label={t('agent.domain')}   value={agent?.domain   || "—"} />
+                <AgentChip icon={Languages}     label={t('agent.language')} value={agent?.language || "—"} />
+                <AgentChip icon={Sparkles}      label={t('agent.style')}    value={agent?.style    || "—"} />
+                <AgentChip icon={MessageCircle} label={t('dash.today_msgs')}
+                  value={<AnimatedNumber value={stats?.todayConversations ?? 0} />}
                 />
               </div>
             </div>
 
-            {/* Performance bar */}
             <div className="px-4 pb-3">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] text-white/50">معدل الإقناع</span>
-                <span className="text-[10px] font-bold text-white/80">{stats?.conversionRate ?? 0}%</span>
+                <span className="text-[13px] text-white/50">{t('dash.conv_rate')}</span>
+                <span className="text-[13px] font-bold text-white/80">{stats?.conversionRate ?? 0}%</span>
               </div>
-              <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.12)" }}>
+              <div className="h-1 rounded-full overflow-hidden bg-white/10">
                 <div
                   className="h-full rounded-full"
                   style={{
@@ -455,53 +860,44 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* CTA button */}
             <button
               onClick={() => router.push("/dashboard/settings")}
-              className="w-full flex items-center justify-center gap-2 py-2.5 text-[12px] font-semibold transition-all duration-200 hover:gap-3 active:scale-[0.98]"
-              style={{
-                borderTop: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.07)",
-                color: "rgba(255,255,255,0.85)",
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.13)"}
-              onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.07)"}
+              className="w-full flex items-center justify-center gap-2 py-2.5 text-[13px] font-semibold transition-all duration-200 hover:gap-3 active:scale-[0.98] border-t border-white/10 bg-white/[0.07] hover:bg-white/15 text-white/85"
             >
               <Settings2 size={12} />
-              تعديل شخصية Agent
+              {t('dash.edit_agent')}
               <ArrowUpRight size={12} />
             </button>
           </div>
 
           {/* Quick Actions Strip */}
-          <div className="bg-card border border-border rounded-xl p-3 flex items-center justify-between gap-2">
+          <div className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-2">
             <button
               onClick={() => router.push("/dashboard/conversations")}
               className="flex-1 flex flex-col items-center gap-1.5 py-2 rounded-lg hover:bg-secondary transition-colors duration-150 group"
             >
-              <MessageCircle size={15} className="text-brand-600 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-medium text-muted-foreground">المحادثات</span>
+              <MessageCircle size={17} className="text-brand-600 group-hover:scale-110 transition-transform" />
+              <span className="text-[13px] font-medium text-muted-foreground">{t('nav.conversations')}</span>
             </button>
             <div className="w-px h-8 bg-border" />
             <button
               onClick={() => router.push("/dashboard/products")}
               className="flex-1 flex flex-col items-center gap-1.5 py-2 rounded-lg hover:bg-secondary transition-colors duration-150 group"
             >
-              <ShoppingBag size={15} className="text-brand-600 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-medium text-muted-foreground">المنتجات</span>
+              <ShoppingBag size={17} className="text-brand-600 group-hover:scale-110 transition-transform" />
+              <span className="text-[13px] font-medium text-muted-foreground">{t('nav.products')}</span>
             </button>
             <div className="w-px h-8 bg-border" />
             <button
               onClick={() => router.push("/dashboard/settings")}
               className="flex-1 flex flex-col items-center gap-1.5 py-2 rounded-lg hover:bg-secondary transition-colors duration-150 group"
             >
-              <Zap size={15} className="text-brand-600 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-medium text-muted-foreground">الإعدادات</span>
+              <Zap size={17} className="text-brand-600 group-hover:scale-110 transition-transform" />
+              <span className="text-[13px] font-medium text-muted-foreground">{t('nav.settings')}</span>
             </button>
           </div>
 
         </div>
       </div>
     </div>
-  )
-}
+  )}

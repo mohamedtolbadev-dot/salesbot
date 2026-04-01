@@ -51,10 +51,7 @@ export async function POST(request) {
     const result = await cloudinary.uploader.upload(dataURI, {
       folder: 'salesbot/products',
       resource_type: 'image',
-      // Security options
-      moderation: 'aws_rek', // Auto-moderate images
       allowed_formats: ['jpg', 'png', 'webp', 'gif'],
-      max_file_size: MAX_FILE_SIZE,
     });
 
     return NextResponse.json({ 
@@ -64,7 +61,7 @@ export async function POST(request) {
   } catch (error) {
     console.error('Upload error:', error);
     return NextResponse.json(
-      { error: 'Failed to upload image' }, 
+      { error: 'Failed to upload image', detail: error?.message || String(error) }, 
       { status: 500 }
     );
   }

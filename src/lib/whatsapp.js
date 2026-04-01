@@ -9,17 +9,31 @@ export async function sendWhatsAppMessage({
   token,
   to,
   message,
-  type = "text"
+  type = "text",
+  document = null
 }) {
   // التحقق من المدخلات
-  if (!phoneId || !token || !to || !message) {
-    console.error("❌ Missing required parameters:", { phoneId: !!phoneId, token: !!token, to: !!to, message: !!message })
+  if (!phoneId || !token || !to) {
+    console.error("❌ Missing required parameters:", { phoneId: !!phoneId, token: !!token, to: !!to })
     return { success: false, error: "Missing required parameters" }
   }
 
   try {
     let body
-    if (type === "image") {
+    if (type === "document" && document) {
+      // إرسال مستند PDF
+      body = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: to,
+        type: "document",
+        document: {
+          filename: document.filename || "invoice.pdf",
+          caption: message || "",
+          id: document.id  // media ID from upload
+        }
+      }
+    } else if (type === "image") {
       // إرسال صورة
       body = {
         messaging_product: "whatsapp",
@@ -97,6 +111,10 @@ export async function sendWhatsAppButtons({
   message,
   buttons
 }) {
+  if (!phoneId || !token || !to || !message || !Array.isArray(buttons) || buttons.length === 0) {
+    console.error("❌ sendWhatsAppButtons: Missing required parameters")
+    return { success: false, error: "Missing required parameters" }
+  }
   try {
     const response = await fetch(
       `${WHATSAPP_API_URL}/${phoneId}/messages`,
@@ -202,7 +220,62 @@ export function parseAllIncomingMessages(body) {
 }
 
 // احتفظ بالدالة القديمة للتوافق
-export function parseIncomingMessage(body) {
-  const messages = parseAllIncomingMessages(body)
-  return messages[0] || null
+export async function uploadWhatsAppMedia({
+  phoneId,
+  token,
+  fileBuffer,
+  filename,
+  mimeType = "application/pdf"
+}) {
+  try {
+    // Create boundary for multipart
+    const boundary = `----FormBoundary${Date.now()}${Math.random().toString(36).substring(2)}`
+    
+    // Build multipart body manually for Node.js compatibility
+    const parts = []
+    
+    // messaging_product field
+    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n`)
+    
+    // type field
+    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\n${mimeType}\r\n`)
+    
+    // file field with buffer
+    const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`
+    
+    const footer = `\r\n--${boundary}--\r\n`
+    
+    // Combine all parts
+    const bodyBuffer = Buffer.concat([
+      Buffer.from(parts.join(''), 'utf-8'),
+      Buffer.from(header, 'utf-8'),
+      fileBuffer,
+      Buffer.from(footer, 'utf-8')
+    ])
+
+    const response = await fetch(
+      `${WHATSAPP_API_URL}/${phoneId}/media`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        },
+        body: bodyBuffer,
+      }
+    )
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error("❌ WhatsApp Media Upload error:", data)
+      return { success: false, error: data }
+    }
+
+    console.log(`✅ Media uploaded successfully (ID: ${data.id})`)
+    return { success: true, mediaId: data.id }
+  } catch (error) {
+    console.error("❌ uploadWhatsAppMedia error:", error.message)
+    return { success: false, error: error.message }
+  }
 }

@@ -8,11 +8,11 @@ export async function PUT(request) {
     if (!user) return unauthorizedResponse()
 
     const body = await request.json()
-    const { name, email, phone, storeName } = body
+    const { name, email, phone } = body
 
     // Validate required fields
-    if (!name || !email || !storeName) {
-      return errorResponse("الاسم والبريد واسم المتجر مطلوبة", 400)
+    if (!name || !email) {
+      return errorResponse("الاسم والبريد مطلوبان", 400)
     }
 
     // Check if email is already taken (if changed)
@@ -32,7 +32,6 @@ export async function PUT(request) {
         name,
         email,
         phone: phone || null,
-        storeName
       }
     })
 
@@ -41,7 +40,6 @@ export async function PUT(request) {
       name: updatedUser.name,
       email: updatedUser.email,
       phone: updatedUser.phone,
-      storeName: updatedUser.storeName,
       plan: updatedUser.plan
     })
   } catch (err) {

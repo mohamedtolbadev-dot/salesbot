@@ -54,10 +54,14 @@ export async function GET(request) {
 
 // POST — معالجة كل الرسائل الواردة من كل الزبائن
 export async function POST(request) {
+  console.log("🚨 WEBHOOK POST RECEIVED - Starting processing...")
+  
   // ✅ التحقق من توقيع Meta (HMAC)
   const signature = request.headers.get("x-hub-signature-256")
   const appSecret = process.env.WHATSAPP_APP_SECRET
   
+  let parsedBody
+
   if (appSecret) {
     const body = await request.text()
     
@@ -66,16 +70,17 @@ export async function POST(request) {
       return new Response("Invalid signature", { status: 403 })
     }
     
-    // Parse body after verification
-    var parsedBody
     try {
       parsedBody = JSON.parse(body)
     } catch {
       return new Response("OK", { status: 200 })
     }
   } else {
-    // Fallback if no app secret configured
-    console.warn("⚠️ WHATSAPP_APP_SECRET not configured - skipping signature verification")
+    if (process.env.NODE_ENV === "production") {
+      console.error("🚨 WHATSAPP_APP_SECRET not set in production — all webhook requests accepted! Set this env var immediately.")
+    } else {
+      console.warn("⚠️ WHATSAPP_APP_SECRET not configured - skipping signature verification (dev mode)")
+    }
     try {
       parsedBody = await request.json()
     } catch {
@@ -183,50 +188,46 @@ export async function POST(request) {
         }
 
         // ✅ إرسال الرد لهذا الزبون تحديداً
-        console.log(`📤 [${incoming.from}] إرسال الرد: ${result.reply.substring(0, 50)}...`)
+        const safeReply = result.reply
+          .replace(/\[STAGE:\w+\]/g, "")
+          .replace(/\[ORDER_CONFIRMED\]/g, "")
+          .replace(/\[BOOKING_CONFIRMED\]/g, "")
+          .replace(/\[SEND[_ ]IMAGES?\]/gi, "")
+          .trim()
+        console.log(`📤 [${incoming.from}] إرسال الرد: ${safeReply.substring(0, 50)}...`)
         const sent = await sendWhatsAppMessage({
           phoneId: agent.whatsappPhoneId,
           token: agent.whatsappToken,
           to: incoming.from,
-          message: result.reply,
+          message: safeReply,
         })
 
         if (sent.success) {
-          console.log(`✅ [${incoming.from}] تم إرسال الرد بنجاح`)
+          console.log(`✅ [${incoming.from}] تم إرسال الرد بنجاح: ${result.reply.substring(0, 40)}...`)
+        } else if (sent.isTokenExpired) {
+          console.error(`🚨 WhatsApp Token انتهت صلاحيتها للـ Agent ${agent.id}`)
+          try {
+            await prisma.notification.create({
+              data: {
+                userId: agent.userId,
+                type: "SYSTEM",
+                title: "🚨 مشكلة في WhatsApp Token",
+                message: "انتهت صلاحية Token الوصول. يرجى الذهاب إلى الإعدادات وتحديث WhatsApp من جديد.",
+                isRead: false,
+              }
+            })
+          } catch (notifError) {
+            console.error("Failed to create notification:", notifError)
+          }
         } else {
           console.error(`❌ [${incoming.from}] فشل إرسال الرد:`, sent.error)
-        }
-
-        if (sent.success) {
-          console.log(`✅ رد لـ ${incoming.from}: ${result.reply.substring(0, 40)}...`)
-        } else {
-          if (sent.isTokenExpired) {
-            console.error(`🚨 WhatsApp Token انتهت صلاحيتها للـ Agent ${agent.id}`)
-            
-            // إنشاء notification للمستخدم
-            try {
-              await prisma.notification.create({
-                data: {
-                  userId: agent.userId,
-                  type: "SYSTEM",
-                  title: "🚨 مشكلة في WhatsApp Token",
-                  message: "انتهت صلاحية Token الوصول. يرجى الذهاب إلى الإعدادات وتحديث WhatsApp من جديد.",
-                  isRead: false,
-                }
-              })
-            } catch (notifError) {
-              console.error("Failed to create notification:", notifError)
-            }
-          } else {
-            console.error(`❌ فشل إرسال لـ ${incoming.from}:`, sent.error)
-          }
         }
 
         // ✅ إرسال الصور إذا طلبها العميل
         if (result.imageUrls && result.imageUrls.length > 0) {
           console.log(`📤 إرسال ${result.imageUrls.length} صورة لـ ${incoming.from}...`)
           for (const imageUrl of result.imageUrls) {
-            if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.trim().startsWith('http')) {
+            if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.trim().startsWith('https://')) {
               console.warn("⚠️ صورة غير صحيحة:", imageUrl)
               continue
             }

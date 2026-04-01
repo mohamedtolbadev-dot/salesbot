@@ -41,7 +41,7 @@ export async function POST(request) {
   if (!user) return unauthorizedResponse()
 
   try {
-    const { name, price, description, images } = await request.json()
+    const { name, price, description, images, stock } = await request.json()
 
     if (!name?.trim() || price === undefined || price === null) {
       return errorResponse("الاسم والسعر مطلوبان", 400)
@@ -59,6 +59,7 @@ export async function POST(request) {
         price: Number(price),
         description: description || "",
         images: images ? JSON.stringify(images) : null,
+        stock: stock !== undefined ? Number(stock) : 0,
       }
     })
 

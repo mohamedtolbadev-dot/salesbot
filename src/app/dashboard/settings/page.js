@@ -4,11 +4,12 @@ import { useState, useEffect } from "react"
 import { useAgentStore } from "@/store/agentStore"
 import { productsAPI, servicesAPI } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { Loader2, Package, Clock, Store, Eye, EyeOff, Sparkles, Zap, Heart, Crown, Flame, Wrench } from "lucide-react"
+import { Loader2, Package, Clock, Store, Eye, EyeOff, Sparkles, Zap, Heart, Crown, Flame, Wrench, Maximize2, XCircle } from "lucide-react"
 import {
   Bot, Save, Plus, Trash2, MessageCircle,
-  Settings, Shield, Bell, Phone,
+  Settings, Shield, Bell, Phone, CalendarCheck,
 } from "lucide-react"
+import { useLanguage } from "@/contexts/LanguageContext"
 
 // ═══════════════════════════════════════════════════════════════
 // ANIMATED REUSABLE COMPONENTS
@@ -17,14 +18,14 @@ import {
 function Field({ label, hint, icon: Icon, children, delay = 0 }) {
   return (
     <div 
-      className="flex flex-col gap-1.5 animate-fadeIn"
+      className="flex flex-col gap-2 animate-fadeIn"
       style={{ animationDelay: `${delay}ms` }}
     >
       {label && (
-        <label className="flex items-center gap-1.5 text-xs font-semibold text-foreground/80">
+        <label className="flex items-center gap-1.5 text-sm font-semibold text-foreground/80">
           {Icon && (
             <span className="p-0.5 rounded bg-brand-600/10">
-              <Icon size={11} className="text-brand-600" />
+              <Icon size={13} className="text-brand-600" />
             </span>
           )}
           {label}
@@ -32,8 +33,8 @@ function Field({ label, hint, icon: Icon, children, delay = 0 }) {
       )}
       {children}
       {hint && (
-        <p className="text-[10px] text-muted-foreground/60 leading-relaxed flex items-center gap-1">
-          <Sparkles size={8} className="text-brand-600/40" />
+        <p className="text-[12px] text-muted-foreground/60 leading-relaxed flex items-center gap-1">
+          <Sparkles size={10} className="text-brand-600/40" />
           {hint}
         </p>
       )}
@@ -61,7 +62,7 @@ function Section({ title, children, className = "", delay = 0 }) {
         <div className="relative px-5 py-4 border-b border-border/50 bg-secondary/50">
           <div className="flex items-center gap-2">
             <span className="w-1 h-4 rounded-full bg-brand-600" />
-            <p className="text-xs font-bold text-foreground/80 tracking-wide">{title}</p>
+            <p className="text-sm font-bold text-foreground/80 tracking-wide">{title}</p>
           </div>
         </div>
       )}
@@ -75,8 +76,8 @@ function Toggle({ on, onToggle, label, sub }) {
     <div className="flex items-center justify-between gap-3 group">
       {(label || sub) && (
         <div className="flex-1 min-w-0">
-          {label && <p className="text-xs font-semibold text-foreground">{label}</p>}
-          {sub && <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">{sub}</p>}
+          {label && <p className="text-sm font-semibold text-foreground">{label}</p>}
+          {sub && <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">{sub}</p>}
         </div>
       )}
       <button
@@ -94,7 +95,7 @@ function Toggle({ on, onToggle, label, sub }) {
         )}>
           {on && (
             <span className="absolute inset-0 flex items-center justify-center">
-              <Zap size={8} className="text-brand-600 fill-brand-600" />
+              <Zap size={10} className="text-brand-600 fill-brand-600" />
             </span>
           )}
         </span>
@@ -120,7 +121,7 @@ function AnimatedButton({ children, onClick, disabled, variant = "primary", clas
       onMouseUp={() => setIsPressed(false)}
       onMouseLeave={() => setIsPressed(false)}
       className={cn(
-        "relative overflow-hidden px-5 py-2.5 rounded-xl text-xs font-semibold",
+        "relative overflow-hidden px-5 py-3 rounded-xl text-sm font-semibold",
         "transition-all duration-200 ease-out",
         "active:scale-[0.98]",
         isPressed && "scale-[0.98]",
@@ -135,7 +136,7 @@ function AnimatedButton({ children, onClick, disabled, variant = "primary", clas
 }
 
 const inputCls = `
-  w-full px-4 py-3 bg-secondary/50 border border-border/60 rounded-xl text-xs
+  w-full px-4 py-3 bg-secondary/50 border border-border/60 rounded-xl text-sm
   outline-none transition-all duration-300
   focus:border-brand-600/50 focus:bg-secondary focus:ring-4 focus:ring-brand-600/5
   hover:border-border/80
@@ -145,21 +146,514 @@ const inputCls = `
 const textareaCls = inputCls + " resize-none leading-relaxed min-h-[80px]"
 
 // ═══════════════════════════════════════════════════════════════
+// MODAL COMPONENT
+// ═══════════════════════════════════════════════════════════════
+
+function TextareaModal({ isOpen, onClose, title, value, onChange, placeholder, hint }) {
+  const { t } = useLanguage()
+  const [localValue, setLocalValue] = useState(value)
+  
+  useEffect(() => { setLocalValue(value) }, [value, isOpen])
+  
+  if (!isOpen) return null
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+      />
+      
+      {/* Modal */}
+      <div className="relative w-full max-w-2xl border border-border rounded-2xl shadow-2xl animate-slideUp"
+           style={{ backgroundColor: 'var(--modal-surface)' }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 bg-secondary/50">
+          <div className="flex items-center gap-2">
+            <span className="w-1 h-4 rounded-full bg-brand-600" />
+            <p className="text-sm font-bold text-foreground/80">{title}</p>
+          </div>
+          <button 
+            onClick={onClose}
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+        
+        {/* Content */}
+        <div className="p-5">
+          {hint && (
+            <p className="text-[12px] text-muted-foreground mb-3 flex items-center gap-1.5">
+              <Sparkles size={12} className="text-brand-600/60" />
+              {hint}
+            </p>
+          )}
+          <textarea
+            value={localValue}
+            onChange={(e) => setLocalValue(e.target.value)}
+            placeholder={placeholder}
+            className={cn(textareaCls, "min-h-[300px] text-[15px]")}
+            autoFocus
+          />
+        </div>
+        
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border/50 bg-secondary/30">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            onClick={() => { onChange(localValue); onClose() }}
+            className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-brand-600 text-white hover:bg-brand-700 transition-colors shadow-md shadow-brand-600/20"
+          >
+            {t('settings.save_changes')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
 
 function isValidDomain(domain) {
   if (!domain) return false
-  // Check if domain contains only valid characters (ASCII, no spaces, no Arabic)
-  const validDomainPattern = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/
+  // Support subdomains like app.example.com
+  const validDomainPattern = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])\.[a-zA-Z]{2,}$/
   return validDomainPattern.test(domain)
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SettingsSkeleton
+   يطابق تماماً بنية SettingsPage — كل تاب لها سكلتون خاص بها
+   الاستخدام: استبدل loading state في SettingsPage بهذا المكون
+───────────────────────────────────────────────────────────── */
+
+/* ── Keyframe injected once via global style ── */
+const shimmerStyle = `
+  @keyframes shimmer {
+    0%   { background-position: -600px 0; }
+    100% { background-position:  600px 0; }
+  }
+`
+
+/* ── Base shimmer block ── */
+function Sk({ w, h, r = 6, style = {}, className = "" }) {
+  return (
+    <div
+      className={className}
+      style={{
+        width: w,
+        height: h,
+        borderRadius: r,
+        backgroundImage:
+          "linear-gradient(90deg, var(--sk-a) 25%, var(--sk-b) 50%, var(--sk-a) 75%)",
+        backgroundSize: "600px 100%",
+        animation: "shimmer 1.6s infinite linear",
+        flexShrink: 0,
+        ...style,
+      }}
+    />
+  )
+}
+
+/* ── Section card shell ── */
+function SectionShell({ children, hasTitle = true }) {
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden">
+      {hasTitle && (
+        <div className="px-5 py-3.5 border-b border-border bg-secondary/50 flex items-center gap-2">
+          <div className="w-1 h-4 rounded-full bg-brand-600" />
+          <Sk w={110} h={12} />
+        </div>
+      )}
+      <div className="p-5">{children}</div>
+    </div>
+  )
+}
+
+/* ── Field skeleton (label + input) ── */
+function FieldSk({ labelW = 80, inputH = 38, textarea = false }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Sk w={labelW} h={11} />
+      <Sk w="100%" h={textarea ? 72 : inputH} r={10} />
+    </div>
+  )
+}
+
+/* ── Toggle row skeleton ── */
+function ToggleSk({ labelW = '40%', subW = '60%' }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+        <Sk w={labelW} h={12} />
+        <Sk w={subW} h={10} style={{ opacity: 0.6 }} />
+      </div>
+      <Sk w={44} h={24} r={99} />
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TAB SKELETONS
+════════════════════════════════════════════════════════════════ */
+
+/* ── Tab: شخصية Agent ── */
+function AgentTabSk() {
+  return (
+    <div className="flex flex-col gap-4 max-w-2xl">
+      {/* Section: معلومات Agent */}
+      <SectionShell>
+        <div className="flex flex-col gap-4">
+
+          {/* name + domain */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FieldSk labelW={70} />
+            <FieldSk labelW={90} />
+          </div>
+
+          {/* Mode */}
+          <div className="flex flex-col gap-1.5">
+            <Sk w={70} h={11} />
+            <div className="grid grid-cols-2 gap-2">
+              <Sk w="100%" h={36} r={10} />
+              <Sk w="100%" h={36} r={10} className="opacity-65" />
+            </div>
+          </div>
+
+          {/* Style + Lang */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Sk w={80} h={11} />
+              <div className="grid grid-cols-3 gap-2">
+                {[0, 1, 2].map((i) => (
+                  <Sk key={i} w="100%" h={68} r={12} className={i === 0 ? "" : "opacity-65"} />
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Sk w={80} h={11} />
+              <div className="grid grid-cols-3 gap-2">
+                {[0, 1, 2].map((i) => (
+                  <Sk key={i} w="100%" h={36} r={10} className={i === 0 ? "" : "opacity-65"} />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <FieldSk labelW={170} />
+          <FieldSk labelW={100} textarea />
+        </div>
+      </SectionShell>
+
+      {/* Section: الرسائل التلقائية */}
+      <SectionShell>
+        <div className="flex flex-col gap-4">
+          <FieldSk labelW={140} textarea />
+          <FieldSk labelW={120} textarea />
+          <FieldSk labelW={110} textarea />
+        </div>
+      </SectionShell>
+
+      {/* Save button */}
+      <Sk w="100%" h={42} r={10} className="bg-brand-600 opacity-55" />
+    </div>
+  )
+}
+
+/* ── Tab: ساعات العمل ── */
+function WorkhoursTabSk() {
+  return (
+    <div className="max-w-lg">
+      <SectionShell>
+        <div className="flex flex-col gap-4">
+          <ToggleSk labelW={110} subW={200} />
+          <div className="grid grid-cols-2 gap-3 pt-4 border-t border-border/60">
+            <FieldSk labelW={30} />
+            <FieldSk labelW={30} />
+          </div>
+          <FieldSk labelW={150} textarea />
+          <Sk w="100%" h={42} r={10} className="bg-brand-600 opacity-55" />
+        </div>
+      </SectionShell>
+    </div>
+  )
+}
+
+/* ── Tab: ردود الاعتراض ── */
+function ObjectionsTabSk() {
+  return (
+    <SectionShell>
+      <div className="flex flex-col gap-4">
+        {/* Header row */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <Sk w="70%" h={11} />
+          <Sk w={80} h={30} r={10} />
+        </div>
+
+        {/* Objection cards */}
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="rounded-2xl border border-border/50 bg-secondary/50 p-3">
+            <div className="flex justify-between items-center mb-3">
+              <div className="flex items-center gap-2">
+                <Sk w={24} h={24} r={8} />
+                <Sk w={70} h={11} />
+              </div>
+              <Sk w={24} h={24} r={8} />
+            </div>
+            <div className="flex flex-col gap-2.5">
+              <FieldSk labelW={120} />
+              <FieldSk labelW={80} textarea />
+            </div>
+          </div>
+        ))}
+
+        <Sk w="100%" h={42} r={10} className="bg-brand-600 opacity-55" />
+      </div>
+    </SectionShell>
+  )
+}
+
+/* ── Tab: واتساب ── */
+function WhatsappTabSk() {
+  return (
+    <div className="max-w-lg">
+      <SectionShell>
+        <div className="flex flex-col gap-4">
+          {/* Status card */}
+          <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-border/50 bg-secondary/50">
+            <Sk w={36} h={36} r={10} className="shrink-0" />
+            <div className="flex-1 flex flex-col gap-1.25">
+              <Sk w={120} h={12} />
+              <Sk w={160} h={10} className="opacity-60" />
+            </div>
+            <Sk w={8} h={8} r={99} />
+          </div>
+
+          <Sk w="100%" h={11} />
+
+          {/* Guide box */}
+          <div className="p-3.5 rounded-2xl border border-border/50 bg-secondary/50 flex flex-col gap-2.5">
+            <Sk w="70%" h={11} />
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Sk w={20} h={20} r={4} className="shrink-0" />
+                <Sk w="100%" h={10} />
+              </div>
+            ))}
+          </div>
+
+          <FieldSk labelW={170} />
+          <FieldSk labelW={140} />
+
+          {/* Webhook field with copy button */}
+          <div className="flex flex-col gap-1.5">
+            <Sk w={100} h={11} />
+            <div className="flex gap-2">
+              <Sk w="100%" h={38} r={10} />
+              <Sk w={52} h={38} r={10} className="shrink-0" />
+            </div>
+          </div>
+
+          {/* Verify token field with copy */}
+          <div className="flex flex-col gap-1.5">
+            <Sk w={120} h={11} />
+            <div className="flex gap-2">
+              <Sk w="100%" h={38} r={10} />
+              <Sk w={52} h={38} r={10} className="shrink-0" />
+            </div>
+          </div>
+
+          <Sk w="100%" h={42} r={10} className="bg-brand-600 opacity-55" />
+        </div>
+      </SectionShell>
+    </div>
+  )
+}
+
+/* ── Tab: الإشعارات ── */
+function NotificationsTabSk() {
+  const items = [
+    { lw: '45%', sw: '65%' },
+    { lw: '35%',  sw: '70%' },
+    { lw: '50%', sw: '60%' },
+    { lw: '40%', sw: '55%' },
+    { lw: '45%', sw: '60%' },
+  ]
+  return (
+    <div className="max-w-lg">
+      <SectionShell>
+        <div className="flex flex-col">
+          {items.map((item, i) => (
+            <div key={i} className={`py-4 ${i < items.length - 1 ? "border-b border-border/50" : ""}`}>
+              <ToggleSk labelW={item.lw} subW={item.sw} />
+            </div>
+          ))}
+        </div>
+      </SectionShell>
+    </div>
+  )
+}
+
+/* ── Tab: الحساب ── */
+function AccountTabSk() {
+  return (
+    <div className="max-w-lg flex flex-col gap-3">
+      <SectionShell>
+        <div className="flex flex-col gap-4">
+          {/* Profile header */}
+          <div className="flex items-center gap-3.5 pb-4.5 border-b border-border/50">
+            <Sk w={56} h={56} r={12} className="shrink-0" />
+            <div className="flex-1 flex flex-col gap-1.25">
+              <Sk w={110} h={13} />
+              <Sk w={160} h={11} className="opacity-65" />
+              <Sk w={90}  h={10} className="opacity-45" />
+            </div>
+            <Sk w={56} h={30} r={10} className="shrink-0" />
+          </div>
+
+          {/* Info grid 2x2 */}
+          <div className="grid grid-cols-2 gap-2.5">
+            {[100, 90, 150, 90].map((w, i) => (
+              <div key={i} className="p-3 rounded-2xl border border-border/50 bg-secondary/50 flex flex-col gap-1.5">
+                <Sk w={60} h={9} className="opacity-60" />
+                <Sk w={w} h={12} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </SectionShell>
+
+      {/* Danger zone */}
+      <div className="rounded-2xl border border-red-500/20 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-red-500/20 bg-red-500/5">
+          <Sk w={90} h={10} />
+        </div>
+        <div className="px-4 py-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex-1 flex flex-col gap-1.25">
+            <Sk w={80} h={11} />
+            <Sk w="100%" h={10} style={{ opacity: 0.6 }} />
+          </div>
+          <Sk w={80} h={30} r={10} className="shrink-0" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN SKELETON COMPONENT
+   استخدم activeTab لعرض السكلتون المناسب لكل تاب
+════════════════════════════════════════════════════════════════ */
+function SettingsSkeleton({ activeTab = "agent" }) {
+  const { t } = useLanguage()
+  const tabSkeletons = {
+    agent:         <AgentTabSk />,
+    workhours:     <WorkhoursTabSk />,
+    objections:    <ObjectionsTabSk />,
+    whatsapp:      <WhatsappTabSk />,
+    notifications: <NotificationsTabSk />,
+    account:       <AccountTabSk />,
+  }
+
+  return (
+    <>
+      <style>{shimmerStyle}</style>
+      <style>{`
+        :root {
+          --sk-a: #e5e7eb;
+          --sk-b: #f3f4f6;
+        }
+        .dark {
+          --sk-a: rgba(30, 41, 59, 0.6);
+          --sk-b: rgba(30, 41, 59, 0.3);
+        }
+      `}</style>
+
+      <div className="flex flex-col gap-4 pb-8">
+
+        {/* ── Header ── */}
+        <div className="flex justify-between items-center gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-brand-600/10 border border-brand-600/15 flex items-center justify-center shrink-0">
+              <Settings size={18} className="text-brand-600" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-semibold text-foreground leading-tight">{t('settings.title')}</h1>
+              <p className="text-[12px] text-muted-foreground">{t('settings.subtitle')}</p>
+            </div>
+          </div>
+
+          {/* Agent status pill */}
+          <div className="flex items-center gap-2.5 bg-secondary/60 border border-border rounded-2xl px-3 py-2 shrink-0">
+            <div className={cn(
+              "w-1.5 h-1.5 rounded-full transition-all",
+              "bg-border"
+            )} />
+            <span className="text-sm text-muted-foreground hidden sm:inline">Agent</span>
+            <span className="text-sm font-semibold text-muted-foreground">
+              {t('settings.agent_inactive')}
+            </span>
+            <button
+              className={cn(
+                "relative w-9 h-5 rounded-full transition-all duration-300 mr-0.5",
+                "bg-border"
+              )}
+            >
+              <span className={cn(
+                "absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-300",
+                "right-5"
+              )} />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Tabs ───────────────────────────────────────── */}
+        <div className="flex gap-1 p-1 bg-secondary/50 border border-border/60 rounded-2xl overflow-x-auto scrollbar-none">
+          {[
+            { w: '30%', active: activeTab === "agent" },
+            { w: '25%',  active: activeTab === "workhours" },
+            { w: '30%', active: activeTab === "objections" },
+            { w: '20%',  active: activeTab === "whatsapp" },
+            { w: '22%',  active: activeTab === "notifications" },
+            { w: '20%',  active: activeTab === "account" },
+          ].map((tab, i) => (
+            <div
+              key={i}
+              className={cn(
+                "flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm transition-all duration-200 whitespace-nowrap shrink-0 font-medium",
+                tab.active
+                  ? "bg-background text-foreground shadow-sm border border-border/80"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-brand-300/60"
+              )}
+            >
+              <Sk w={12} h={12} r={3} className={tab.active ? "" : "opacity-55"} />
+              <span className="hidden sm:inline text-[12px]">{tab.w}</span>
+              <span className="inline sm:hidden text-[11px]">{tab.w.split(" ")[0]}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Tab content ── */}
+        {tabSkeletons[activeTab] ?? tabSkeletons.agent}
+      </div>
+    </>
+  )
 }
 
 // ── Main Page ───────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const { t, language: uiLang } = useLanguage()
   const [activeTab, setActiveTab] = useState("agent")
-  const [previewMsg, setPreviewMsg] = useState("")
   const [saving, setSaving] = useState(false)
   const [newObjection, setNewObjection] = useState(null)
   const [editingReplies, setEditingReplies] = useState({})
@@ -172,19 +666,62 @@ export default function SettingsPage() {
     newOrder: true, dailyReport: true, highValueObjection: true,
     weeklyReport: false, agentDown: true,
   })
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('notificationSettings')
+      if (saved) setNotificationSettings(JSON.parse(saved))
+    } catch {}
+  }, [])
+
   const [workHoursEnabled, setWorkHoursEnabled] = useState(false)
   const [workStart, setWorkStart] = useState("09:00")
   const [workEnd, setWorkEnd] = useState("18:00")
   const [offlineMessage, setOfflineMessage] = useState("")
-  const [welcomeMessage, setWelcomeMessage] = useState("")
-  const [postSaleMessage, setPostSaleMessage] = useState("")
+  const [appointmentConfirmMessage, setAppointmentConfirmMessage] = useState("")
+  const [appointmentReminderMessage, setAppointmentReminderMessage] = useState("")
+  const [appointmentCancellationMessage, setAppointmentCancellationMessage] = useState("")
+  const [orderConfirmMessage, setOrderConfirmMessage] = useState("")
+  const [orderShipMessage, setOrderShipMessage] = useState("")
+  const [orderDeliverMessage, setOrderDeliverMessage] = useState("")
+  const [orderCancelledMessage, setOrderCancelledMessage] = useState("")
   const [whatsappForm, setWhatsappForm] = useState({ whatsappPhoneId: "", whatsappToken: "" })
   const [showToken, setShowToken] = useState(false)
   const [products, setProducts] = useState([])
   const [services, setServices] = useState([])
 
+  // Modal states
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalConfig, setModalConfig] = useState({ title: "", field: "", value: "", placeholder: "", hint: "", onSave: null })
+
+  // Toast state
+  const [toast, setToast] = useState(null)
+
+  // Delete dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+
   const { agent, loading, fetchAgent, updateAgent, toggleActive,
     addObjectionReply, removeObjectionReply, updateObjectionReply } = useAgentStore()
+
+  // Initialize editingReplies when objectionReplies changes
+  useEffect(() => {
+    if (agent?.objectionReplies?.length > 0) {
+      const initial = {}
+      agent.objectionReplies.forEach(item => {
+        initial[item.id] = {
+          trigger: item.trigger,
+          reply: item.reply
+        }
+      })
+      setEditingReplies(initial)
+    }
+  }, [agent?.objectionReplies])
+
+  function showToast(message, type = "success") {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3500)
+  }
 
   useEffect(() => { fetchAgent(); fetchProducts(); fetchServices(); fetchUser() }, [fetchAgent])
 
@@ -198,7 +735,7 @@ export default function SettingsPage() {
       const data = await response.json()
       if (data.data) {
         setUser(data.data)
-        setAccountForm({ storeName: data.data.storeName || "", name: data.data.name || "", email: data.data.email || "", phone: data.data.phone || "" })
+        setAccountForm({ name: data.data.name || "", email: data.data.email || "", phone: data.data.phone || "" })
       }
     } catch (err) { console.error(err) }
   }
@@ -212,8 +749,8 @@ export default function SettingsPage() {
         body: JSON.stringify(accountForm)
       })
       const data = await response.json()
-      if (data.data) { setUser(data.data); setEditingAccount(false) }
-    } catch (err) { alert("خطأ في تحديث البيانات") } finally { setAccountLoading(false) }
+      if (data.data) { setUser(data.data); setEditingAccount(false); showToast(t('settings.toast_account_updated')) }
+    } catch (err) { showToast(t('settings.toast_account_error'), "error") } finally { setAccountLoading(false) }
   }
 
   useEffect(() => {
@@ -232,8 +769,13 @@ export default function SettingsPage() {
       setWorkStart(agent.workStart || "09:00")
       setWorkEnd(agent.workEnd || "18:00")
       setOfflineMessage(agent.offlineMessage || "")
-      setWelcomeMessage(agent.welcomeMessage || "")
-      setPostSaleMessage(agent.postSaleMessage || "")
+      setAppointmentConfirmMessage(agent.appointmentConfirmMessage || "")
+      setAppointmentReminderMessage(agent.appointmentReminderMessage || "")
+      setAppointmentCancellationMessage(agent.appointmentCancellationMessage || "")
+      setOrderConfirmMessage(agent.orderConfirmMessage || "")
+      setOrderShipMessage(agent.orderShipMessage || "")
+      setOrderDeliverMessage(agent.orderDeliverMessage || "")
+      setOrderCancelledMessage(agent.orderCancelledMessage || "")
       setWhatsappForm({ whatsappPhoneId: agent.whatsappPhoneId || "", whatsappToken: agent.whatsappToken || "" })
     }
   }, [agent])
@@ -241,7 +783,14 @@ export default function SettingsPage() {
   async function handleSaveAgent() {
     try {
       setSaving(true)
-      await updateAgent({ ...localAgent, workHoursEnabled, workStart, workEnd, offlineMessage, welcomeMessage, postSaleMessage })
+      await updateAgent({
+        ...localAgent,
+        workHoursEnabled, workStart, workEnd, offlineMessage,
+        appointmentConfirmMessage, appointmentReminderMessage,
+        appointmentCancellationMessage,
+        orderConfirmMessage, orderShipMessage, orderDeliverMessage, orderCancelledMessage,
+      })
+      showToast(t('settings.toast_saved'))
     } catch (err) { console.error(err) } finally { setSaving(false) }
   }
 
@@ -254,9 +803,62 @@ export default function SettingsPage() {
   }
 
   async function handleAddObjection() {
-    if (!newObjection?.trigger?.trim() || !newObjection?.reply?.trim()) { alert("يرجى ملء الحقلين"); return }
+    if (!newObjection?.trigger?.trim() || !newObjection?.reply?.trim()) { showToast(t('settings.toast_fill_fields'), "error"); return }
     const success = await addObjectionReply({ trigger: newObjection.trigger.trim(), reply: newObjection.reply.trim() })
-    if (success) setNewObjection(null)
+    if (success) { setNewObjection(null); showToast(t('settings.toast_reply_added')) }
+  }
+
+  async function handleDeleteAccount() {
+    try {
+      setDeleteLoading(true)
+      const token = localStorage.getItem('token')
+      const response = await fetch('/api/auth/delete-account', {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        localStorage.removeItem('token')
+        window.location.href = '/'
+      } else {
+        showToast(t('settings.toast_delete_failed'), "error")
+      }
+    } catch (err) {
+      console.error(err)
+      showToast(t('settings.toast_conn_error'), "error")
+    } finally {
+      setDeleteLoading(false)
+      setShowDeleteDialog(false)
+    }
+  }
+
+  async function handleTestWhatsAppConnection() {
+    if (!whatsappForm.whatsappPhoneId || !whatsappForm.whatsappToken) {
+      showToast(t('settings.toast_enter_creds'), "error")
+      return
+    }
+    try {
+      const response = await fetch('/api/whatsapp/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phoneId: whatsappForm.whatsappPhoneId,
+          token: whatsappForm.whatsappToken
+        })
+      })
+      const data = await response.json()
+      if (data.success) {
+        showToast(t('settings.toast_wa_ok'))
+      } else {
+        showToast(t('settings.toast_wa_fail') + (data.error || ""), "error")
+      }
+    } catch (err) {
+      showToast(t('settings.toast_server_error'), "error")
+    }
+  }
+
+  function handleSaveNotifications() {
+    try { localStorage.setItem('notificationSettings', JSON.stringify(notificationSettings)) } catch {}
+    showToast(t('settings.toast_notif_saved'))
   }
 
   const name = localAgent.name || ""
@@ -268,59 +870,55 @@ export default function SettingsPage() {
   const instructions = localAgent.instructions || ""
   const objectionReplies = agent?.objectionReplies || []
 
-  if (loading) return (
-    <div className="flex flex-col gap-5">
-      {/* Header skeleton */}
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-secondary/60 animate-pulse" />
-          <div className="flex flex-col gap-1.5">
-            <div className="w-24 h-5 bg-secondary/60 rounded animate-pulse" />
-            <div className="w-32 h-3 bg-secondary/60 rounded animate-pulse" />
-          </div>
-        </div>
-        <div className="w-32 h-9 bg-secondary/60 rounded-2xl animate-pulse" />
-      </div>
-      
-      {/* Tabs skeleton */}
-      <div className="flex gap-1 p-1 bg-secondary/30 border border-border/30 rounded-2xl">
-        {[1,2,3,4,5,6].map(i => (
-          <div key={i} className="flex-1 h-9 bg-secondary/60 rounded-xl animate-pulse" />
-        ))}
-      </div>
-      
-      {/* Content skeleton */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="flex flex-col gap-3">
-          <div className="bg-secondary/60 rounded-2xl h-80 animate-pulse" />
-          <div className="bg-secondary/60 rounded-2xl h-48 animate-pulse" />
-        </div>
-        <div className="bg-secondary/60 rounded-2xl h-96 animate-pulse" />
-      </div>
-    </div>
-  )
+  const orderPh = uiLang === "fr" ? {
+    confirm: "Bonjour {name} !\nVotre commande ({product}) a été confirmée avec succès.",
+    ship:    "Votre commande ({product}) est en chemin !\nBonjour {name} !",
+    deliver: "Bonjour {name} ! Nous espérons que {product} vous satisfait.",
+    cancel:  "Bonjour {name}, malheureusement votre commande ({product}) a été annulée ❌...",
+  } : {
+    confirm: "مرحباً {name}!\nتم تأكيد طلبيتك ({product}) بنجاح",
+    ship:    "طلبيتك ({product}) في الطريق\nمرحباً {name}!",
+    deliver: "مرحباً {name}! نتمى أن تكون راضياً عن {product}",
+    cancel:  "مرحبا {name}، للأسف تم إلغاء طلبيتك ❌...",
+  }
+
+  const apptPh = uiLang === "fr" ? {
+    confirm:  "Bonjour {name} ! ✅\nVotre rendez-vous ({service}) est confirmé.\n📅 {date} à {time}\nNous vous attendons ! 😊",
+    reminder: "Bonjour {name} ! ⏰\nRappel : votre rendez-vous ({service}) est demain.\n📅 {date} à {time}",
+    cancel:   "Bonjour {name},\nNous sommes désolés, votre rendez-vous ({service}) du {date} a été annulé. ❌\nContactez-nous pour replanifier.",
+  } : {
+    confirm:  "مرحباً {name}! ✅\nتم تأكيد موعدك ({service}).\n📅 {date} في {time}\nننتظرك! 😊",
+    reminder: "مرحباً {name}! ⏰\nتذكير: موعدك ({service}) غداً.\n📅 {date} في {time}",
+    cancel:   "مرحباً {name},\nنأسف لإبلاغك بإلغاء موعدك ({service}) في {date}. ❌\nتواصل معنا لإعادة الجدولة.",
+  }
+
+  if (loading) return <SettingsSkeleton activeTab={activeTab} />
 
   const tabs = [
-    { key: "agent",         label: "شخصية Agent",    icon: Bot },
-    { key: "workhours",     label: "ساعات العمل",     icon: Clock },
-    { key: "objections",    label: "ردود الاعتراض",   icon: MessageCircle },
-    { key: "whatsapp",      label: "واتساب",           icon: Phone },
-    { key: "notifications", label: "الإشعارات",        icon: Bell },
-    { key: "account",       label: "الحساب",           icon: Settings },
+    { key: "agent",         label: t('settings.tab_agent'),         icon: Bot },
+    { key: "workhours",     label: t('settings.tab_workhours'),     icon: Clock },
+    { key: "objections",    label: t('settings.tab_objections'),    icon: MessageCircle },
+    { key: "whatsapp",      label: t('settings.tab_whatsapp'),      icon: Phone },
+    { key: "notifications", label: t('settings.tab_notifications'), icon: Bell },
+    { key: "account",       label: t('settings.tab_account'),       icon: Settings },
   ]
 
   const styleOptions = [
-    { key: "friendly", label: "ودود", icon: Heart },
-    { key: "formal", label: "رسمي", icon: Crown },
-    { key: "persuasive", label: "مقنع", icon: Flame },
+    { key: "friendly",   label: t('settings.friendly_short'),   icon: Heart },
+    { key: "formal",     label: t('settings.formal_short'),     icon: Crown },
+    { key: "persuasive", label: t('settings.persuasive_short'), icon: Flame },
   ]
   const langOptions = [
-    { key: "darija",  label: "دارجة" },
-    { key: "arabic",  label: "عربية" },
-    { key: "french",  label: "فرنسية" },
+    { key: "darija", label: t('settings.lang_darija') },
+    { key: "arabic", label: t('settings.lang_arabic') },
+    { key: "french", label: t('settings.lang_french') },
   ]
 
   const isWAConnected = !!(whatsappForm.whatsappPhoneId && whatsappForm.whatsappToken)
+
+  // Webhook URL from environment
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://salesbot-rho.vercel.app"
+  const webhookUrl = `${APP_URL}/api/webhook/whatsapp`
 
   return (
     <div className="flex flex-col gap-3 sm:gap-5 pb-8">
@@ -328,12 +926,12 @@ export default function SettingsPage() {
       {/* ── Header ─────────────────────────────────────── */}
       <div className="flex justify-between items-center gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-2xl bg-brand-600/10 border border-brand-600/15 flex items-center justify-center shrink-0">
-            <Settings size={16} className="text-brand-600" />
+          <div className="w-10 h-10 rounded-2xl bg-brand-600/10 border border-brand-600/15 flex items-center justify-center shrink-0">
+            <Settings size={18} className="text-brand-600" />
           </div>
           <div>
-            <h1 className="text-base sm:text-lg font-semibold text-foreground leading-tight">الإعدادات</h1>
-            <p className="text-[11px] text-muted-foreground">تخصيص Agent وإدارة الحساب</p>
+            <h1 className="text-xl sm:text-2xl font-semibold text-foreground leading-tight">{t('settings.title')}</h1>
+            <p className="text-[12px] text-muted-foreground">{t('settings.subtitle')}</p>
           </div>
         </div>
 
@@ -343,9 +941,9 @@ export default function SettingsPage() {
             "w-1.5 h-1.5 rounded-full transition-all",
             isActive ? "bg-green-500 shadow-sm shadow-green-500/60 animate-pulse" : "bg-border"
           )} />
-          <span className="text-xs text-muted-foreground hidden sm:inline">Agent</span>
-          <span className={cn("text-xs font-semibold", isActive ? "text-green-600" : "text-muted-foreground")}>
-            {isActive ? "نشط" : "متوقف"}
+          <span className="text-sm text-muted-foreground hidden sm:inline">Agent</span>
+          <span className={cn("text-sm font-semibold", isActive ? "text-green-600" : "text-muted-foreground")}>
+            {isActive ? t('settings.agent_active') : t('settings.agent_inactive')}
           </span>
           <button
             onClick={toggleActive}
@@ -372,14 +970,14 @@ export default function SettingsPage() {
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs transition-all duration-200 whitespace-nowrap shrink-0 font-medium",
+                "flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm transition-all duration-200 whitespace-nowrap shrink-0 font-medium",
                 active
                   ? "bg-background text-foreground shadow-sm border border-border/80"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary hover:border-brand-300/60"
               )}
             >
-              <Icon size={12} className={active ? "text-brand-600" : ""} />
-              <span className="hidden sm:inline">{tab.label}</span>
+              <Icon size={14} className={active ? "text-brand-600" : ""} />
+              <span className="hidden sm:inline text-[12px]">{tab.label}</span>
               <span className="inline sm:hidden text-[11px]">{tab.label.split(" ")[0]}</span>
             </button>
           )
@@ -388,28 +986,64 @@ export default function SettingsPage() {
 
       {/* ════ Tab: شخصية Agent ════════════════════════ */}
       {activeTab === "agent" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="flex flex-col gap-4 max-w-2xl">
 
-          <div className="flex flex-col gap-3">
-            <Section title="معلومات Agent">
-              <div className="flex flex-col gap-4">
-                <Field label="اسم Agent">
+          <Section title={t('settings.agent_info')}>
+            <div className="flex flex-col gap-4">
+
+              {/* اسم + مجال */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label={t('settings.agent_name')}>
                   <input type="text" value={name}
                     onChange={(e) => setLocalAgent({ ...localAgent, name: e.target.value })}
-                    placeholder="مثال: ليلى" className={inputCls} />
+                    placeholder={t('settings.agent_name_placeholder')} className={inputCls} />
                 </Field>
 
-                <Field label="مجال النشاط">
+                <Field label={t('settings.agent_domain')}>
                   <select value={domain}
                     onChange={(e) => setLocalAgent({ ...localAgent, domain: e.target.value })}
                     className={inputCls}>
-                    {["ملابس وأزياء","إلكترونيات","عطور ومستحضرات","مواد غذائية","مجوهرات وإكسسوار","أثاث ومنزل","آخر"].map(d => (
-                      <option key={d}>{d}</option>
-                    ))}
+                    {mode === "service"
+                      ? [t('settings.domain_beauty'),t('settings.domain_health'),t('settings.domain_medical'),t('settings.domain_restaurant'),t('settings.domain_cleaning'),t('settings.domain_hotel'),t('settings.domain_other')].map(d => (
+                          <option key={d}>{d}</option>
+                        ))
+                      : [t('settings.domain_clothing'),t('settings.domain_electronics'),t('settings.domain_perfumes'),t('settings.domain_food'),t('settings.domain_jewelry'),t('settings.domain_furniture'),t('settings.domain_other')].map(d => (
+                          <option key={d}>{d}</option>
+                        ))
+                    }
                   </select>
                 </Field>
+              </div>
+              {/* وضع العمل */}
+              <Field label={t('settings.work_mode')} icon={Package}
+                hint={t('settings.work_mode_hint')}>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setLocalAgent({ ...localAgent, mode: "product" })}
+                    className={cn(
+                      "py-2.5 rounded-xl text-sm border transition-all duration-200 font-medium",
+                      mode !== "service"
+                        ? "bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25"
+                        : "border-border text-muted-foreground hover:bg-secondary hover:border-brand-300/60"
+                    )}>
+                    {t('settings.products_btn')}
+                  </button>
+                  <button
+                    onClick={() => setLocalAgent({ ...localAgent, mode: "service" })}
+                    className={cn(
+                      "py-2.5 rounded-xl text-sm border transition-all duration-200 font-medium",
+                      mode === "service"
+                        ? "bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25"
+                        : "border-border text-muted-foreground hover:bg-secondary hover:border-brand-300/60"
+                    )}>
+                    {t('settings.services_btn')}
+                  </button>
+                </div>
+              </Field>
 
-                <Field label="أسلوب الحديث" delay={200}>
+              {/* أسلوب + لغة */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label={t('settings.style_label')}>
                   <div className="grid grid-cols-3 gap-2">
                     {styleOptions.map((s, idx) => {
                       const StyleIcon = s.icon
@@ -433,13 +1067,13 @@ export default function SettingsPage() {
                   </div>
                 </Field>
 
-                <Field label="لغة التواصل">
+                <Field label={t('settings.lang_label')}>
                   <div className="grid grid-cols-3 gap-2">
                     {langOptions.map((l) => (
                       <button key={l.key}
                         onClick={() => setLocalAgent({ ...localAgent, language: l.key })}
                         className={cn(
-                          "py-2.5 rounded-xl text-xs border transition-all duration-200 font-medium",
+                          "py-2.5 rounded-xl text-sm border transition-all duration-200 font-medium",
                           language === l.key
                             ? "bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25"
                             : "border-border text-muted-foreground hover:bg-secondary hover:border-brand-300/60"
@@ -449,187 +1083,278 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 </Field>
+              </div>
 
-                <Field label="وضع العمل" icon={Package}
-                  hint="اختر ما إذا كان Agent يبيع منتجات أو يحجز خدمات">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => setLocalAgent({ ...localAgent, mode: "product" })}
-                      className={cn(
-                        "py-2.5 rounded-xl text-xs border transition-all duration-200 font-medium",
-                        mode !== "service"
-                          ? "bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25"
-                          : "border-border text-muted-foreground hover:bg-secondary hover:border-brand-300/60"
-                      )}>
-                      🛍️ منتجات
-                    </button>
-                    <button
-                      onClick={() => setLocalAgent({ ...localAgent, mode: "service" })}
-                      className={cn(
-                        "py-2.5 rounded-xl text-xs border transition-all duration-200 font-medium",
-                        mode === "service"
-                          ? "bg-brand-600 text-white border-brand-600 shadow-md shadow-brand-600/25"
-                          : "border-border text-muted-foreground hover:bg-secondary hover:border-brand-300/60"
-                      )}>
-                      🔧 خدمات
-                    </button>
-                  </div>
+              {/* المنتج / الخدمة */}
+              {mode === "service" ? (
+                <Field label={t('settings.service_agent')} icon={Wrench}
+                  hint={t('settings.service_agent_hint')}>
+                  <select value={localAgent?.selectedServiceId || ""}
+                    onChange={(e) => setLocalAgent({ ...localAgent, selectedServiceId: e.target.value || null })}
+                    className={inputCls}>
+                    <option value="">{t('settings.all_services_auto')}</option>
+                    {services.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name} - {s.price} {t('settings.currency')} ({s.duration}{t('settings.min_abbr')})</option>
+                    ))}
+                  </select>
                 </Field>
+              ) : (
+                <Field label={t('settings.product_agent')} icon={Package}
+                  hint={t('settings.product_agent_hint')}>
+                  <select value={localAgent?.selectedProductId || ""}
+                    onChange={(e) => setLocalAgent({ ...localAgent, selectedProductId: e.target.value || null })}
+                    className={inputCls}>
+                    <option value="">{t('settings.all_products_auto')}</option>
+                    {products.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name} - {p.price} {t('settings.currency')}</option>
+                    ))}
+                  </select>
+                </Field>
+              )}
 
-                {mode === "service" ? (
-                  <Field label="الخدمة التي يعمل عليها Agent" icon={Wrench}
-                    hint="Agent غادي يركز على حجز هذه الخدمة ويرسل صورها للعملاء">
-                    <select value={agent?.selectedServiceId || ""}
-                      onChange={(e) => setLocalAgent({ ...localAgent, selectedServiceId: e.target.value || null })}
-                      className={inputCls}>
-                      <option value="">جميع الخدمات (تلقائي)</option>
-                      {services.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name} - {s.price} درهم ({s.duration}د)</option>
-                      ))}
-                    </select>
-                  </Field>
-                ) : (
-                  <Field label="المنتج الذي يعمل عليه Agent" icon={Package}
-                    hint="Agent غادي يركز على بيع هذا المنتج ويرسل صوره للعملاء">
-                    <select value={agent?.selectedProductId || ""}
-                      onChange={(e) => setLocalAgent({ ...localAgent, selectedProductId: e.target.value || null })}
-                      className={inputCls}>
-                      <option value="">جميع المنتجات (تلقائي)</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name} - {p.price} درهم</option>
-                      ))}
-                    </select>
-                  </Field>
-                )}
-
-                <Field label="تعليمات خاصة">
-                  <textarea value={instructions} rows={3}
+              {/* تعليمات خاصة */}
+              <Field label={t('settings.instructions_label')}>
+                <div className="relative">
+                  <textarea value={instructions} rows={4}
                     onChange={(e) => setLocalAgent({ ...localAgent, instructions: e.target.value })}
-                    placeholder="مثال: دائماً اذكر التوصيل المجاني..."
-                    className={textareaCls} />
-                </Field>
-              </div>
-            </Section>
-
-            <Section title="الرسائل التلقائية">
-              <div className="flex flex-col gap-4">
-                <Field label="رسالة الترحيب الأولى" icon={MessageCircle}
-                  hint="تُرسل تلقائياً عند أول تواصل من العميل">
-                  <textarea value={welcomeMessage} rows={3}
-                    onChange={(e) => setWelcomeMessage(e.target.value)}
-                    placeholder="مرحباً بيك!  أنا ليلى، مساعدةك الشخصية..."
-                    className={textareaCls} />
-                </Field>
-
-                <Field label="رسالة ما بعد البيع" icon={Store}
-                  hint="تُرسل تلقائياً بعد تأكيد الطلب">
-                  <textarea value={postSaleMessage} rows={3}
-                    onChange={(e) => setPostSaleMessage(e.target.value)}
-                    placeholder="شكراً على ثقتك!  الطلب ديالك في الطريق..."
-                    className={textareaCls} />
-                </Field>
-              </div>
-            </Section>
-          </div>
-
-          {/* Preview */}
-          <div className="flex flex-col gap-3">
-            <Section title="معاينة Agent">
-              {/* بطاقة Agent */}
-              <div className="relative overflow-hidden rounded-xl border border-border bg-secondary/30 p-4 mb-4">
-                <div className="relative flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-brand-600/10 border border-brand-600/20 flex items-center justify-center shrink-0">
-                    <Bot size={21} className="text-brand-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-foreground">{name || "اسم Agent"}</p>
-                    <p className="text-[11px] text-muted-foreground truncate">
-                      {domain || "المجال"} · {styleOptions.find(s => s.key === style)?.label} · {language === "darija" ? "دارجة" : language === "french" ? "فرنسية" : "عربية"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-1 shrink-0">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-[10px] text-green-600 font-semibold">نشط</span>
-                  </div>
+                    placeholder={t('settings.instructions_hint')}
+                    className={cn(textareaCls, "pr-10")} />
+                  <button
+                    onClick={() => { setModalConfig({
+                      title: t('settings.instructions_label'),
+                      value: instructions,
+                      placeholder: t('settings.instructions_hint'),
+                      hint: t('settings.instructions_hint'),
+                      onSave: (val) => setLocalAgent({ ...localAgent, instructions: val })
+                    }); setModalOpen(true); }}
+                    className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                    title={t('settings.expand')}
+                  >
+                    <Maximize2 size={16} />
+                  </button>
                 </div>
-              </div>
+              </Field>
 
-              <div className="flex flex-col gap-3">
-                <p className="text-xs text-muted-foreground font-medium">جرب كيف يرد Agent:</p>
-                <input type="text" value={previewMsg}
-                  onChange={(e) => setPreviewMsg(e.target.value)}
-                  placeholder="اكتب سؤال زبون..." className={inputCls} />
+            </div>
+          </Section>
 
-                {previewMsg && (
-                  <div className="rounded-2xl border border-border bg-secondary/20 p-3 flex flex-col gap-3">
-                    {/* رسالة الزبون */}
-                    <div className="flex flex-row-reverse gap-2 items-end">
-                      <div className="w-6 h-6 rounded-full bg-border flex items-center justify-center text-[10px] text-muted-foreground shrink-0">ز</div>
-                      <div className="bg-border/50 rounded-2xl rounded-bl-sm px-3 py-2 text-xs text-foreground max-w-[80%]">
-                        {previewMsg}
-                      </div>
-                    </div>
-                    {/* رد Agent */}
-                    <div className="flex gap-2 items-end">
-                      <div className="w-6 h-6 rounded-full bg-brand-600/12 flex items-center justify-center text-[10px] text-brand-600 font-bold shrink-0">
-                        {name?.charAt(0) || "A"}
-                      </div>
-                      <div className="bg-card border border-border rounded-2xl rounded-br-sm px-3 py-2 text-xs text-foreground leading-relaxed max-w-[80%] shadow-sm">
-                        {language === "darija"
-                          ? `السلام عليكم! أنا ${name || "Agent"} 🌸 واش عندنا ${previewMsg.includes("سعر") ? "أسعار مناسبة جداً" : "كل ما تحتاجه"}. كيف يمكنني مساعدتك؟`
-                          : language === "french"
-                          ? `Bonjour! Je suis ${name || "Agent"} 🌸 Comment puis-je vous aider?`
-                          : `مرحباً! أنا ${name || "Agent"} 🌸 كيف يمكنني مساعدتك؟`}
-                      </div>
-                    </div>
+          {/* الرسائل التلقائية — فقط في وضع المنتجات */}
+          {mode !== "service" && (
+            <Section title={t('settings.order_messages')}>
+              <div className="flex flex-col gap-4">
+                <Field label={t('settings.order_confirm_msg')} icon={CalendarCheck}
+                  hint={t('settings.order_confirm_hint')}>
+                  <div className="relative">
+                    <textarea value={orderConfirmMessage} rows={3}
+                      onChange={(e) => setOrderConfirmMessage(e.target.value)}
+                      placeholder={orderPh.confirm}
+                      className={cn(textareaCls, "pr-10")} />
+                    <button
+                      onClick={() => { setModalConfig({
+                        title: t('settings.order_confirm_msg'),
+                        value: orderConfirmMessage,
+                        placeholder: orderPh.confirm,
+                        hint: t('settings.order_confirm_hint'),
+                        onSave: (val) => setOrderConfirmMessage(val)
+                      }); setModalOpen(true); }}
+                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      title={t('settings.expand')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
                   </div>
-                )}
+                </Field>
+
+                <Field label={t('settings.order_ship_msg')} icon={Bell}
+                  hint={t('settings.order_ship_hint')}>
+                  <div className="relative">
+                    <textarea value={orderShipMessage} rows={3}
+                      onChange={(e) => setOrderShipMessage(e.target.value)}
+                      placeholder={orderPh.ship}
+                      className={cn(textareaCls, "pr-10")} />
+                    <button
+                      onClick={() => { setModalConfig({
+                        title: t('settings.order_ship_msg'),
+                        value: orderShipMessage,
+                        placeholder: orderPh.ship,
+                        hint: t('settings.order_ship_hint'),
+                        onSave: (val) => setOrderShipMessage(val)
+                      }); setModalOpen(true); }}
+                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      title={t('settings.expand')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </div>
+                </Field>
+
+                <Field label={t('settings.order_deliver_msg')} icon={Trash2}
+                  hint={t('settings.order_deliver_hint')}>
+                  <div className="relative">
+                    <textarea value={orderDeliverMessage} rows={3}
+                      onChange={(e) => setOrderDeliverMessage(e.target.value)}
+                      placeholder={orderPh.deliver}
+                      className={cn(textareaCls, "pr-10")} />
+                    <button
+                      onClick={() => { setModalConfig({
+                        title: t('settings.order_deliver_msg'),
+                        value: orderDeliverMessage,
+                        placeholder: orderPh.deliver,
+                        hint: t('settings.order_deliver_hint'),
+                        onSave: (val) => setOrderDeliverMessage(val)
+                      }); setModalOpen(true); }}
+                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      title={t('settings.expand')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </div>
+                </Field>
+
+                <Field label={t('settings.order_cancelled_msg')} icon={XCircle}
+                  hint={t('settings.order_cancelled_hint')}>
+                  <div className="relative">
+                    <textarea value={orderCancelledMessage} rows={3}
+                      onChange={(e) => setOrderCancelledMessage(e.target.value)}
+                      placeholder={orderPh.cancel}
+                      className={cn(textareaCls, "pr-10")} />
+                    <button
+                      onClick={() => { setModalConfig({
+                        title: t('settings.order_cancelled_msg'),
+                        value: orderCancelledMessage,
+                        placeholder: orderPh.cancel,
+                        hint: t('settings.order_cancelled_hint'),
+                        onSave: (val) => setOrderCancelledMessage(val)
+                      }); setModalOpen(true); }}
+                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      title={t('settings.expand')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </div>
+                </Field>
               </div>
             </Section>
+          )}
 
-            <button onClick={handleSaveAgent} disabled={saving}
-              className="flex items-center gap-2 justify-center bg-brand-600 text-white px-5 py-3 rounded-xl text-xs font-semibold hover:bg-brand-700 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-brand-600/25">
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
-            </button>
-          </div>
+          {/* الرسائل التلقائية — فقط في وضع الخدمات */}
+          {mode === "service" && (
+            <Section title={t('settings.appt_messages')}>
+              <div className="flex flex-col gap-4">
+                <Field label={t('settings.appt_confirm_msg')} icon={CalendarCheck}
+                  hint={t('settings.appt_confirm_hint')}>
+                  <div className="relative">
+                    <textarea value={appointmentConfirmMessage} rows={3}
+                      onChange={(e) => setAppointmentConfirmMessage(e.target.value)}
+                      placeholder={apptPh.confirm}
+                      className={cn(textareaCls, "pr-10")} />
+                    <button
+                      onClick={() => { setModalConfig({
+                        title: t('settings.appt_confirm_msg'),
+                        value: appointmentConfirmMessage,
+                        placeholder: apptPh.confirm,
+                        hint: t('settings.appt_confirm_hint'),
+                        onSave: (val) => setAppointmentConfirmMessage(val)
+                      }); setModalOpen(true); }}
+                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      title={t('settings.expand')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </div>
+                </Field>
+
+                <Field label={t('settings.appt_reminder_msg')} icon={Bell}
+                  hint={t('settings.appt_reminder_hint')}>
+                  <div className="relative">
+                    <textarea value={appointmentReminderMessage} rows={3}
+                      onChange={(e) => setAppointmentReminderMessage(e.target.value)}
+                      placeholder={apptPh.reminder}
+                      className={cn(textareaCls, "pr-10")} />
+                    <button
+                      onClick={() => { setModalConfig({
+                        title: t('settings.appt_reminder_msg'),
+                        value: appointmentReminderMessage,
+                        placeholder: apptPh.reminder,
+                        hint: t('settings.appt_reminder_hint'),
+                        onSave: (val) => setAppointmentReminderMessage(val)
+                      }); setModalOpen(true); }}
+                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      title={t('settings.expand')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </div>
+                </Field>
+
+                <Field label={t('settings.appt_cancel_msg')} icon={Trash2}
+                  hint={t('settings.appt_cancel_hint')}>
+                  <div className="relative">
+                    <textarea value={appointmentCancellationMessage} rows={3}
+                      onChange={(e) => setAppointmentCancellationMessage(e.target.value)}
+                      placeholder={apptPh.cancel}
+                      className={cn(textareaCls, "pr-10")} />
+                    <button
+                      onClick={() => { setModalConfig({
+                        title: t('settings.appt_cancel_msg'),
+                        value: appointmentCancellationMessage,
+                        placeholder: apptPh.cancel,
+                        hint: t('settings.appt_cancel_hint'),
+                        onSave: (val) => setAppointmentCancellationMessage(val)
+                      }); setModalOpen(true); }}
+                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      title={t('settings.expand')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </div>
+                </Field>
+              </div>
+            </Section>
+          )}
+
+          <button onClick={handleSaveAgent} disabled={saving}
+            className="w-full flex items-center gap-2 justify-center bg-brand-600 text-white py-3.5 rounded-xl text-sm font-semibold hover:bg-brand-700 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-brand-600/25">
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            {saving ? t('settings.saving') : t('settings.save_changes')}
+          </button>
+
         </div>
       )}
-
       {/* ════ Tab: ساعات العمل ════════════════════════ */}
       {activeTab === "workhours" && (
         <div className="flex flex-col gap-3 max-w-lg">
-          <Section title="ساعات العمل">
+          <Section title={t('settings.work_hours')}>
             <div className="flex flex-col gap-5">
               <Toggle on={workHoursEnabled} onToggle={() => setWorkHoursEnabled(!workHoursEnabled)}
-                label="تفعيل ساعات العمل"
-                sub="تعطيل الرد التلقائي خارج هذه الساعات" />
+                label={t('settings.enable_workhours')}
+                sub={t('settings.workhours_sub')} />
 
               {workHoursEnabled && (
                 <div className="grid grid-cols-2 gap-3 pt-4 border-t border-border/60">
-                  <Field label="من">
+                  <Field label={t('settings.work_start')}>
                     <input type="time" value={workStart}
                       onChange={(e) => setWorkStart(e.target.value)} className={inputCls} />
                   </Field>
-                  <Field label="إلى">
+                  <Field label={t('settings.work_end')}>
                     <input type="time" value={workEnd}
                       onChange={(e) => setWorkEnd(e.target.value)} className={inputCls} />
                   </Field>
                 </div>
               )}
 
-              <Field label="رسالة خارج أوقات العمل" icon={MessageCircle}
-                hint="تُرسل تلقائياً عندما يتواصل العميل خارج ساعات العمل">
+              <Field label={t('settings.offline_msg')} icon={MessageCircle}
+                hint={t('settings.offline_msg_hint')}>
                 <textarea value={offlineMessage} rows={3}
                   onChange={(e) => setOfflineMessage(e.target.value)}
-                  placeholder="مرحباً! نعمل من 9 صباحاً حتى 6 مساءً 😊"
+                  placeholder={t('settings.offline_msg')}
                   className={textareaCls} />
               </Field>
 
               <button onClick={handleSaveAgent} disabled={saving}
-                className="w-full flex items-center gap-2 justify-center bg-brand-600 text-white py-3 rounded-xl text-xs font-semibold hover:bg-brand-700 active:scale-[0.98] transition-all disabled:opacity-50 shadow-md shadow-brand-600/25">
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                {saving ? "جاري الحفظ..." : "حفظ الإعدادات"}
+                className="w-full flex items-center gap-2 justify-center bg-brand-600 text-white py-3.5 rounded-xl text-sm font-semibold hover:bg-brand-700 active:scale-[0.98] transition-all disabled:opacity-50 shadow-md shadow-brand-600/25">
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                {saving ? t('settings.saving') : t('settings.save_settings')}
               </button>
             </div>
           </Section>
@@ -639,39 +1364,39 @@ export default function SettingsPage() {
       {/* ════ Tab: ردود الاعتراض ══════════════════════ */}
       {activeTab === "objections" && (
         <div className="flex flex-col gap-3">
-          <Section title="ردود الاعتراض التلقائية">
+          <Section title={t('settings.objection_auto')}>
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">Agent يستخدم هذه الردود تلقائياً عند اعتراض الزبون</p>
+                <p className="text-sm text-muted-foreground">{t('settings.objection_desc')}</p>
                 <button onClick={() => setNewObjection({ trigger: "", reply: "" })} disabled={newObjection !== null}
-                  className="flex items-center gap-1.5 text-xs text-brand-600 font-semibold hover:text-brand-700 disabled:opacity-40 transition-colors bg-brand-600/8 hover:bg-brand-600/15 px-3 py-1.5 rounded-xl">
-                  <Plus size={12} /> إضافة رد
+                  className="flex items-center gap-1.5 text-sm text-brand-600 font-semibold hover:text-brand-700 disabled:opacity-40 transition-colors bg-brand-600/8 hover:bg-brand-600/15 px-3 py-1.5 rounded-xl">
+                  <Plus size={14} /> {t('settings.add_objection')}
                 </button>
               </div>
 
               {newObjection && (
                 <div className="bg-brand-600/5 border border-brand-600/20 rounded-2xl p-4">
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-xs font-semibold text-brand-600">رد جديد</span>
+                    <span className="text-sm font-semibold text-brand-600">{t('settings.new_reply')}</span>
                     <button onClick={() => setNewObjection(null)}
                       className="w-6 h-6 rounded-lg bg-border/60 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-                      <Trash2 size={11} />
+                      <Trash2 size={13} />
                     </button>
                   </div>
                   <div className="flex flex-col gap-3">
-                    <Field label="عندما يقول الزبون:">
+                    <Field label={t('settings.when_says')}>
                       <input type="text" value={newObjection.trigger}
                         onChange={(e) => setNewObjection({ ...newObjection, trigger: e.target.value })}
-                        placeholder='مثال: "غالي شوية"' className={inputCls} />
+                        placeholder={t('settings.when_says')} className={inputCls} />
                     </Field>
-                    <Field label="Agent يرد:">
+                    <Field label={t('settings.agent_says')}>
                       <textarea value={newObjection.reply} rows={2}
                         onChange={(e) => setNewObjection({ ...newObjection, reply: e.target.value })}
-                        placeholder="رد Agent التلقائي..." className={textareaCls} />
+                        placeholder={t('settings.agent_says')} className={textareaCls} />
                     </Field>
                     <button onClick={handleAddObjection}
-                      className="flex items-center gap-1.5 justify-center bg-brand-600 text-white py-2.5 rounded-xl text-xs font-semibold hover:bg-brand-700 transition-all shadow-sm shadow-brand-600/20">
-                      <Save size={12} /> حفظ الرد
+                      className="flex items-center gap-1.5 justify-center bg-brand-600 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-brand-700 transition-all shadow-sm shadow-brand-600/20">
+                      <Save size={14} /> {t('settings.save_reply')}
                     </button>
                   </div>
                 </div>
@@ -681,29 +1406,39 @@ export default function SettingsPage() {
                 {objectionReplies.length === 0 && !newObjection && (
                   <div className="py-10 text-center border border-dashed border-border rounded-2xl">
                     <MessageCircle size={24} className="text-muted-foreground/40 mx-auto mb-2" />
-                    <p className="text-xs text-muted-foreground">لا توجد ردود بعد — أضف أول رد</p>
+                    <p className="text-sm text-muted-foreground">{t('settings.no_replies')}</p>
                   </div>
                 )}
                 {objectionReplies.map((item, index) => (
                   <div key={item.id} className="bg-secondary/40 border border-border rounded-2xl p-3">
                     <div className="flex justify-between items-center mb-3">
                       <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-lg bg-brand-600/10 flex items-center justify-center text-[10px] font-bold text-brand-600">{index + 1}</span>
-                        <span className="text-xs font-medium text-foreground">رد تلقائي</span>
+                        <span className="w-6 h-6 rounded-lg bg-brand-600/10 flex items-center justify-center text-[12px] font-bold text-brand-600">{index + 1}</span>
+                        <span className="text-sm font-medium text-foreground">{t('settings.auto_reply')}</span>
                       </div>
                       <button onClick={() => removeObjectionReply(item.id)}
                         className="w-6 h-6 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all">
-                        <Trash2 size={11} />
+                        <Trash2 size={13} />
                       </button>
                     </div>
                     <div className="flex flex-col gap-2">
-                      <Field label="عند الزبون يقول:">
-                        <input type="text" data-objection-id={item.id} data-field="trigger"
-                          defaultValue={item.trigger} className={inputCls} />
+                      <Field label={t('settings.when_says')}>
+                        <input type="text"
+                          value={editingReplies[item.id]?.trigger || ""}
+                          onChange={(e) => setEditingReplies(prev => ({
+                            ...prev,
+                            [item.id]: { ...prev[item.id], trigger: e.target.value }
+                          }))}
+                          className={inputCls} />
                       </Field>
-                      <Field label="Agent يرد:">
-                        <textarea data-objection-id={item.id} data-field="reply"
-                          defaultValue={item.reply} rows={2} className={textareaCls} />
+                      <Field label={t('settings.agent_says')}>
+                        <textarea
+                          value={editingReplies[item.id]?.reply || ""}
+                          onChange={(e) => setEditingReplies(prev => ({
+                            ...prev,
+                            [item.id]: { ...prev[item.id], reply: e.target.value }
+                          }))}
+                          rows={2} className={textareaCls} />
                       </Field>
                     </div>
                   </div>
@@ -712,16 +1447,20 @@ export default function SettingsPage() {
 
               {objectionReplies.length > 0 && (
                 <button onClick={async () => {
-                  const saves = objectionReplies.map((item) => {
-                    const t = document.querySelector(`input[data-objection-id="${item.id}"][data-field="trigger"]`)
-                    const r = document.querySelector(`textarea[data-objection-id="${item.id}"][data-field="reply"]`)
-                    if (t && r) return updateObjectionReply(item.id, { trigger: t.value, reply: r.value })
+                  const saves = objectionReplies.map(item => {
+                    const edited = editingReplies[item.id]
+                    if (edited) {
+                      return updateObjectionReply(item.id, {
+                        trigger: edited.trigger,
+                        reply: edited.reply
+                      })
+                    }
                     return Promise.resolve()
                   })
                   await Promise.all(saves)
-                  alert("✅ تم حفظ ردود الاعتراض!")
-                }} className="w-full flex items-center gap-2 justify-center bg-brand-600 text-white py-3 rounded-xl text-xs font-semibold hover:bg-brand-700 transition-all shadow-md shadow-brand-600/25">
-                  <Save size={14} /> حفظ الردود
+                  showToast(t('settings.toast_replies_saved'))
+                }} className="w-full flex items-center gap-2 justify-center bg-brand-600 text-white py-3.5 rounded-xl text-sm font-semibold hover:bg-brand-700 transition-all shadow-md shadow-brand-600/25">
+                  <Save size={16} /> {t('settings.save_replies')}
                 </button>
               )}
             </div>
@@ -732,71 +1471,70 @@ export default function SettingsPage() {
       {/* ════ Tab: واتساب ════════════════════════════ */}
       {activeTab === "whatsapp" && (
         <div className="flex flex-col gap-3 max-w-lg">
-          <Section title="ربط WhatsApp Business">
+          <Section title={t('settings.wa_connect')}>
             <div className="flex flex-col gap-4">
 
               {/* حالة الاتصال */}
               <div className={cn(
-                "flex items-center gap-3 p-3.5 rounded-xl border transition-all",
+                "flex items-center gap-3 p-4 rounded-xl border transition-all",
                 isWAConnected ? "bg-green-500/8 border-green-500/20" : "bg-secondary/50 border-border"
               )}>
-                <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
-                  isWAConnected ? "bg-green-500/12 border border-green-500/20" : "bg-secondary border border-border")}>
-                  <Phone size={14} className={isWAConnected ? "text-green-600" : "text-muted-foreground"} />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0">
+                  <Phone size={16} className={isWAConnected ? "text-green-600" : "text-muted-foreground"} />
                 </div>
                 <div className="flex-1">
-                  <p className="text-xs font-semibold text-foreground">
-                    {isWAConnected ? "متصل بـ WhatsApp ✓" : "غير متصل"}
+                  <p className="text-sm font-semibold text-foreground">
+                    {isWAConnected ? t('settings.wa_connected') : t('settings.wa_not_connected')}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {isWAConnected ? "Agent يستقبل الرسائل بنجاح" : "أدخل بيانات الربط أدناه"}
+                  <p className="text-[12px] text-muted-foreground">
+                    {isWAConnected ? t('settings.wa_ok') : t('settings.wa_not_ok')}
                   </p>
                 </div>
                 <div className={cn("w-2 h-2 rounded-full shrink-0",
                   isWAConnected ? "bg-green-500 animate-pulse shadow-sm shadow-green-500/60" : "bg-border")} />
               </div>
 
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                أدخل Phone ID و Access Token من Meta Developers لربط Agent بواتساب
+              <p className="text-[12px] text-muted-foreground leading-relaxed">
+                {t('settings.wa_intro')}
               </p>
 
               {/* ════ دليل الإعدادات ════════════════════════ */}
-              <div className="p-3.5 bg-blue-500/8 border border-blue-500/20 rounded-xl">
-                <p className="text-[11px] font-semibold text-blue-700 mb-2 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> من أين تحصل على الإعدادات؟
+              <div className="p-4 bg-blue-500/8 border border-blue-500/20 rounded-xl">
+                <p className="text-[12px] font-semibold text-blue-700 mb-2 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> {t('settings.wa_guide')}
                 </p>
                 <div className="flex flex-col gap-2">
                   <a href="https://developers.facebook.com/apps/1869784147010749/whatsapp-business-api/setup" 
                     target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-[11px] text-blue-600 hover:text-blue-700 hover:underline transition-colors">
-                    <span className="w-5 h-5 rounded bg-blue-500/10 flex items-center justify-center text-[10px] font-bold">1</span>
-                    <span>📱 الحصول على Phone ID من Meta</span>
-                    <span className="text-[9px] opacity-60">(يفتح في نافذة جديدة)</span>
+                    className="flex items-center gap-2 text-[12px] text-blue-600 hover:text-blue-700 hover:underline transition-colors">
+                    <span className="w-5 h-5 rounded bg-blue-500/10 flex items-center justify-center text-[12px] font-bold">1</span>
+                    <span>{t('settings.wa_step1')}</span>
+                    <span className="text-[11px] opacity-60">{t('settings.wa_new_win')}</span>
                   </a>
                   <a href="https://business.facebook.com/settings/system-users" 
                     target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-[11px] text-blue-600 hover:text-blue-700 hover:underline transition-colors">
-                    <span className="w-5 h-5 rounded bg-blue-500/10 flex items-center justify-center text-[10px] font-bold">2</span>
-                    <span>🔑 إنشاء Access Token طويل الأمد</span>
-                    <span className="text-[9px] opacity-60">(System User)</span>
+                    className="flex items-center gap-2 text-[12px] text-blue-600 hover:text-blue-700 hover:underline transition-colors">
+                    <span className="w-5 h-5 rounded bg-blue-500/10 flex items-center justify-center text-[12px] font-bold">2</span>
+                    <span>{t('settings.wa_step2')}</span>
+                    <span className="text-[11px] opacity-60">(System User)</span>
                   </a>
                   <a href="https://developers.facebook.com/apps/1869784147010749/whatsapp-business-api/webhooks" 
                     target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-[11px] text-blue-600 hover:text-blue-700 hover:underline transition-colors">
-                    <span className="w-5 h-5 rounded bg-blue-500/10 flex items-center justify-center text-[10px] font-bold">3</span>
-                    <span>⚙️ إعداد Webhook في Meta</span>
-                    <span className="text-[9px] opacity-60">(الخطوة الأخيرة)</span>
+                    className="flex items-center gap-2 text-[12px] text-blue-600 hover:text-blue-700 hover:underline transition-colors">
+                    <span className="w-5 h-5 rounded bg-blue-500/10 flex items-center justify-center text-[12px] font-bold">3</span>
+                    <span>{t('settings.wa_step3')}</span>
+                    <span className="text-[11px] opacity-60">{t('settings.wa_last_step')}</span>
                   </a>
                 </div>
               </div>
 
-              <Field label="معرف هاتف واتساب (Phone ID)">
+              <Field label={t('settings.phone_id')}>
                 <input type="text" value={whatsappForm.whatsappPhoneId}
                   onChange={(e) => setWhatsappForm({ ...whatsappForm, whatsappPhoneId: e.target.value })}
-                  placeholder="مثال: 819683327841970" className={inputCls} />
+                  placeholder="ex: 819683327841970" className={inputCls} />
               </Field>
 
-              <Field label="رمز الوصول (Access Token)">
+              <Field label={t('settings.token')}>
                 <div className="relative">
                   <input type={showToken ? "text" : "password"}
                     value={whatsappForm.whatsappToken}
@@ -805,54 +1543,56 @@ export default function SettingsPage() {
                     className={cn(inputCls, "pr-3 pl-10")} />
                   <button type="button" onClick={() => setShowToken(!showToken)}
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                    {showToken ? <EyeOff size={13} /> : <Eye size={13} />}
+                    {showToken ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
               </Field>
 
-              <Field label="رابط Webhook" hint="انسخه إلى لوحة Meta Developers">
+              <Field label={t('settings.webhook_url')} hint={t('settings.webhook_hint')}>
                 <div className="flex gap-2">
-                  <input readOnly value={`https://${isValidDomain(agent?.domain) ? agent?.domain : 'salesbot-rho.vercel.app'}/api/webhook/whatsapp`}
-                    className={cn(inputCls, "flex-1 text-[10px] text-muted-foreground font-mono cursor-text")} />
+                  <input readOnly value={webhookUrl}
+                    className={cn(inputCls, "flex-1 text-[11px] text-muted-foreground font-mono cursor-text")} />
                   <button onClick={() => {
-                    navigator.clipboard.writeText(`https://${isValidDomain(agent?.domain) ? agent?.domain : 'salesbot-rho.vercel.app'}/api/webhook/whatsapp`)
-                    alert("✅ تم النسخ!")
-                  }} className="shrink-0 px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-medium hover:bg-secondary/80 hover:border-brand-300/60 transition-all">
-                    نسخ
+                    navigator.clipboard.writeText(webhookUrl)
+                    showToast(t('settings.copied'))
+                  }} className="shrink-0 px-3 py-2 bg-secondary border border-border rounded-xl text-sm font-medium hover:bg-secondary/80 hover:border-brand-300/60 transition-all">
+                    {t('settings.copy')}
                   </button>
                 </div>
               </Field>
 
               {!isValidDomain(agent?.domain) && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                <div className="p-3 bg-amber-500/8 border border-amber-500/20 rounded-xl">
                   <p className="text-[11px] text-amber-700">
-                    ⚠️ الدومين الحالي غير صالح. استخدم: salesbot-rho.vercel.app
-                  </p>
-                  <p className="text-[10px] text-amber-600/80 mt-1">
-                    غيّر الدومين في إعدادات Agent (بدون أحرف عربية أو مسافات)
+                    ℹ️ {t('settings.wa_env_hint')}
                   </p>
                 </div>
               )}
 
-              <Field label="رمز التحقق (Verify Token)" hint="رمز فريد خاص بك - انسخه إلى لوحة Meta Developers">
+              <Field label={t('settings.verify_token')} hint={t('settings.verify_hint')}>
                 <div className="flex gap-2">
-                  <input readOnly value={agent?.verifyToken || "جاري التحميل..."}
-                    className={cn(inputCls, "flex-1 text-[10px] text-muted-foreground font-mono cursor-text")} />
+                  <input readOnly value={agent?.verifyToken || t('settings.wa_loading')}
+                    className={cn(inputCls, "flex-1 text-[11px] text-muted-foreground font-mono cursor-text")} />
                   <button onClick={() => {
                     navigator.clipboard.writeText(agent?.verifyToken)
-                    alert("✅ تم النسخ!")
+                    showToast(t('settings.copied'))
                   }} disabled={!agent?.verifyToken}
-                  className="shrink-0 px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-medium hover:bg-secondary/80 hover:border-brand-300/60 transition-all disabled:opacity-50">
-                    نسخ
+                  className="shrink-0 px-3 py-2 bg-secondary border border-border rounded-xl text-sm font-medium hover:bg-secondary/80 hover:border-brand-300/60 transition-all disabled:opacity-50">
+                    {t('settings.copy')}
                   </button>
                 </div>
               </Field>
 
               <button onClick={async () => {
                 const success = await updateAgent({ whatsappPhoneId: whatsappForm.whatsappPhoneId, whatsappToken: whatsappForm.whatsappToken })
-                if (success) alert("✅ تم حفظ بيانات WhatsApp!")
-              }} className="w-full flex items-center gap-2 justify-center bg-brand-600 text-white py-3 rounded-xl text-xs font-semibold hover:bg-brand-700 transition-all shadow-md shadow-brand-600/25">
-                <Save size={13} /> حفظ بيانات WhatsApp
+                if (success) showToast(t('settings.toast_wa_saved'))
+              }} className="w-full flex items-center gap-2 justify-center bg-brand-600 text-white py-3.5 rounded-xl text-sm font-semibold hover:bg-brand-700 transition-all shadow-md shadow-brand-600/25">
+                <Save size={15} /> {t('settings.save_whatsapp')}
+              </button>
+
+              <button onClick={handleTestWhatsAppConnection}
+                className="w-full flex items-center gap-2 justify-center bg-secondary border border-border text-foreground py-3.5 rounded-xl text-sm font-semibold hover:bg-secondary/80 hover:border-brand-300/60 transition-all">
+                <Phone size={15} /> {t('settings.test_whatsapp')}
               </button>
             </div>
           </Section>
@@ -862,14 +1602,14 @@ export default function SettingsPage() {
       {/* ════ Tab: الإشعارات ══════════════════════════ */}
       {activeTab === "notifications" && (
         <div className="max-w-lg">
-          <Section title="إعدادات الإشعارات">
+          <Section title={t('settings.notifications_title')}>
             <div className="flex flex-col divide-y divide-border/50">
               {[
-                { key: "newOrder",           title: "إشعار كل طلب جديد",  sub: "تصلك رسالة واتساب عند كل طلب مؤكد" },
-                { key: "dailyReport",        title: "تقرير يومي",           sub: "ملخص يومي للمحادثات والمبيعات صباحاً" },
-                { key: "highValueObjection", title: "تنبيه اعتراض مهم",    sub: "عند اعتراض زبون عالي الإمكانية" },
-                { key: "weeklyReport",       title: "تقرير أسبوعي",         sub: "تحليل أسبوعي شامل كل الأحد" },
-                { key: "agentDown",          title: "تنبيه انقطاع Agent",   sub: "إذا توقف Agent عن العمل" },
+                { key: "newOrder",           title: t('settings.notif_new_order'),   sub: t('settings.notif_new_order_sub') },
+                { key: "dailyReport",        title: t('settings.notif_daily'),       sub: t('settings.notif_daily_sub') },
+                { key: "highValueObjection", title: t('settings.notif_objection'),   sub: t('settings.notif_objection_sub') },
+                { key: "weeklyReport",       title: t('settings.notif_weekly'),      sub: t('settings.notif_weekly_sub') },
+                { key: "agentDown",          title: t('settings.notif_agent_down'),  sub: t('settings.notif_agent_down_sub') },
               ].map((item) => (
                 <div key={item.key} className="py-4 first:pt-0 last:pb-0">
                   <Toggle
@@ -881,6 +1621,13 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
+            <div className="pt-4 border-t border-border/60">
+              <button onClick={handleSaveNotifications}
+                className="w-full flex items-center gap-2 justify-center bg-brand-600 text-white py-3.5 rounded-xl text-sm font-semibold hover:bg-brand-700 transition-all shadow-md shadow-brand-600/25">
+                <Save size={16} />
+                {t('settings.save_settings')}
+              </button>
+            </div>
           </Section>
         </div>
       )}
@@ -890,14 +1637,13 @@ export default function SettingsPage() {
         <div className="flex flex-col gap-3 max-w-lg">
 
           {editingAccount ? (
-            <Section title="تعديل معلومات الحساب">
+            <Section title={t('settings.edit_account_title')}>
               <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
-                    { label: "اسم المتجر", key: "storeName", type: "text" },
-                    { label: "الاسم الكامل", key: "name", type: "text" },
-                    { label: "البريد الإلكتروني", key: "email", type: "email" },
-                    { label: "رقم الواتساب", key: "phone", type: "tel" },
+                    { label: t('settings.full_name'),  key: "name",  type: "text" },
+                    { label: t('settings.email'),      key: "email", type: "email" },
+                    { label: t('settings.phone'),      key: "phone", type: "tel" },
                   ].map(({ label, key, type }) => (
                     <Field key={key} label={label}>
                       <input type={type} value={accountForm[key] || ""}
@@ -908,45 +1654,45 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-border/60">
                   <button onClick={() => setEditingAccount(false)}
-                    className="w-full sm:w-auto sm:mr-auto px-4 py-2.5 border border-border rounded-xl text-xs font-medium hover:bg-secondary transition-all">
-                    إلغاء
+                    className="w-full sm:w-auto sm:mr-auto px-4 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-secondary transition-colors">
+                    {t('common.cancel')}
                   </button>
                   <button onClick={handleSaveAccount} disabled={accountLoading}
-                    className="w-full sm:w-auto px-4 py-2.5 bg-brand-600 text-white rounded-xl text-xs font-semibold hover:bg-brand-700 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md shadow-brand-600/20">
-                    {accountLoading && <Loader2 size={12} className="animate-spin" />}
-                    حفظ التغييرات
+                    className="w-full sm:w-auto px-4 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md shadow-brand-600/20">
+                    {accountLoading && <Loader2 size={14} className="animate-spin" />}
+                    {t('settings.save_changes')}
                   </button>
                 </div>
               </div>
             </Section>
           ) : (
-            <Section title="معلومات الحساب">
+            <Section title={t('settings.account_title')}>
               {/* Profile header */}
               <div className="flex items-center gap-4 mb-5 pb-5 border-b border-border/60">
                 <div className="w-14 h-14 rounded-2xl bg-brand-600/10 border border-brand-600/15 flex items-center justify-center text-xl font-bold text-brand-600 shrink-0">
-                  {user?.storeName ? user.storeName.charAt(0).toUpperCase() : "؟"}
+                  {user?.name ? user.name.charAt(0).toUpperCase() : "؟"}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate">{user?.storeName || "-"}</p>
-                  <p className="text-xs text-muted-foreground truncate">{user?.email || "-"}</p>
-                  <p className="text-[11px] text-muted-foreground/70 mt-0.5">{user?.phone || "-"}</p>
+                  <p className="text-[15px] font-semibold text-foreground truncate">{user?.name || "-"}</p>
+                  <p className="text-sm text-muted-foreground truncate">{user?.email || "-"}</p>
+                  <p className="text-[12px] text-muted-foreground/70 mt-0.5">{user?.phone || "-"}</p>
                 </div>
                 <button onClick={() => setEditingAccount(true)}
-                  className="shrink-0 text-xs border border-border px-3 py-1.5 rounded-xl hover:bg-secondary hover:border-brand-300/60 transition-all font-medium">
-                  تعديل
+                  className="shrink-0 text-sm border border-border px-3 py-1.5 rounded-xl hover:bg-secondary hover:border-brand-300/60 transition-all font-medium">
+                  {t('settings.edit_btn')}
                 </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  { label: "اسم المتجر",       value: user?.storeName || "-" },
-                  { label: "الاسم الكامل",      value: user?.name || "-" },
-                  { label: "البريد الإلكتروني", value: user?.email || "-" },
-                  { label: "تاريخ التسجيل",     value: user?.createdAt ? new Date(user.createdAt).toLocaleDateString('ar-MA') : "-" },
+                  { label: t('settings.full_name'),  value: user?.name || "-" },
+                  { label: t('settings.email'),      value: user?.email || "-" },
+                  { label: t('settings.phone'),      value: user?.phone || "-" },
+                  { label: t('settings.join_date'),  value: user?.createdAt ? new Date(user.createdAt).toLocaleDateString('fr-FR') : "-" },
                 ].map((item) => (
-                  <div key={item.label} className="flex flex-col gap-1 p-3 bg-secondary/40 rounded-xl border border-border/40">
-                    <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">{item.label}</p>
-                    <p className="text-xs font-semibold text-foreground break-all">{item.value}</p>
+                  <div key={item.label} className="flex flex-col gap-1 p-3.5 bg-secondary/40 rounded-xl border border-border/40">
+                    <p className="text-[12px] text-muted-foreground font-medium uppercase tracking-wide">{item.label}</p>
+                    <p className="text-[15px] font-semibold text-foreground break-all">{item.value}</p>
                   </div>
                 ))}
               </div>
@@ -956,20 +1702,108 @@ export default function SettingsPage() {
           {/* Danger Zone */}
           <div className="bg-card border border-red-500/15 rounded-2xl overflow-hidden">
             <div className="px-4 py-3 border-b border-red-500/10 bg-red-500/4">
-              <p className="text-[11px] font-semibold text-red-500/70 tracking-widest uppercase flex items-center gap-1.5">
-                <Shield size={11} /> منطقة الخطر
+              <p className="text-[12px] font-semibold text-red-500/70 tracking-widest uppercase flex items-center gap-1.5">
+                <Shield size={13} /> {t('settings.danger_zone')}
               </p>
             </div>
             <div className="p-4 flex justify-between items-center gap-3">
               <div className="flex-1">
-                <p className="text-xs font-medium text-foreground">حذف الحساب</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">سيتم حذف كل البيانات نهائياً ولا يمكن التراجع</p>
+                <p className="text-sm font-medium text-foreground">{t('settings.delete_account')}</p>
+                <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">{t('settings.delete_account_sub')}</p>
               </div>
-              <button className="shrink-0 text-xs border border-red-500/20 text-red-500/70 px-3 py-1.5 rounded-xl hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-500 transition-all font-medium">
-                حذف الحساب
+              <button onClick={() => setShowDeleteDialog(true)}
+                className="shrink-0 text-sm border border-red-500/20 text-red-500/70 px-3 py-1.5 rounded-xl hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-500 transition-all font-medium">
+                {t('settings.delete_account')}
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowDeleteDialog(false)}
+          />
+          <div className="relative w-full max-w-sm border border-border rounded-2xl shadow-2xl animate-slideUp"
+               style={{ backgroundColor: 'var(--modal-surface)' }}>
+
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-border/50 bg-red-500/5">
+              <div className="flex items-center gap-2">
+                <Shield size={16} className="text-red-500" />
+                <p className="text-[15px] font-bold text-red-500">{t('settings.delete_confirm_title')}</p>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-5">
+              <p className="text-[15px] text-foreground font-medium mb-2">
+                {t('settings.delete_confirm_question')}
+              </p>
+              <div className="flex flex-col gap-1.5 mb-4">
+                {[
+                  t('settings.delete_item1'),
+                  t('settings.delete_item2'),
+                  t('settings.delete_item3'),
+                  t('settings.delete_item4'),
+                ].map(item => (
+                  <div key={item}
+                    className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 bg-red-500/8 border border-red-500/20 rounded-xl">
+                <p className="text-[12px] text-red-600 font-medium">
+                  ⚠️ {t('settings.delete_irreversible')}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-2 px-5 py-4 border-t border-border/50">
+              <button
+                onClick={() => setShowDeleteDialog(false)}
+                className="flex-1 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-secondary transition-colors">
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteLoading}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+                {deleteLoading
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : <Trash2 size={14} />
+                }
+                {deleteLoading ? t('settings.deleting') : t('settings.confirm_delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className={cn(
+          "fixed bottom-6 left-1/2 -translate-x-1/2 z-50",
+          "flex items-center gap-2.5 px-5 py-3 rounded-2xl",
+          "text-sm font-medium shadow-xl border",
+          "animate-slideUp whitespace-nowrap",
+          toast.type === "success" &&
+            "bg-green-600 text-white border-green-500",
+          toast.type === "error" &&
+            "bg-red-600 text-white border-red-500",
+          toast.type === "info" &&
+            "bg-brand-600 text-white border-brand-500",
+        )}>
+          {toast.type === "success" && "✅"}
+          {toast.type === "error"   && "❌"}
+          {toast.type === "info"    && "ℹ️"}
+          {toast.message}
         </div>
       )}
 
@@ -1007,6 +1841,17 @@ export default function SettingsPage() {
           transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
         }
       `}</style>
+
+      {/* Textarea Modal */}
+      <TextareaModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={modalConfig.title}
+        value={modalConfig.value}
+        onChange={modalConfig.onSave}
+        placeholder={modalConfig.placeholder}
+        hint={modalConfig.hint}
+      />
     </div>
   )
 }

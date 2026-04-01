@@ -11,6 +11,7 @@ export async function GET(request) {
     email: user.email,
     storeName: user.storeName,
     plan: user.plan,
+    role: user.role,
     agent: user.agent ? {
       id: user.agent.id,
       name: user.agent.name,

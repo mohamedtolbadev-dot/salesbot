@@ -11,7 +11,9 @@ export async function POST(request) {
       return errorResponse(`تم تجاوز الحد المسموح به. حاول مرة أخرى بعد ${Math.ceil(rateLimitResult.retryAfter / 60)} دقيقة`, 429)
     }
 
-    const { email, password } = await request.json()
+    const raw = await request.json()
+    const email = raw.email?.trim().toLowerCase()
+    const password = raw.password
 
     if (!email || !password) {
       return errorResponse("الإيميل وكلمة المرور مطلوبان")
@@ -24,13 +26,13 @@ export async function POST(request) {
     })
 
     if (!user) {
-      return errorResponse("الإيميل أو كلمة المرور غير صحيحة")
+      return errorResponse("الإيميل أو كلمة المرور غير صحيحة", 401)
     }
 
     // التحقق من كلمة المرور
     const isValid = await comparePassword(password, user.password)
     if (!isValid) {
-      return errorResponse("الإيميل أو كلمة المرور غير صحيحة")
+      return errorResponse("الإيميل أو كلمة المرور غير صحيحة", 401)
     }
 
     const token = generateToken(user.id)
@@ -43,6 +45,7 @@ export async function POST(request) {
         email: user.email,
         storeName: user.storeName,
         plan: user.plan,
+        role: user.role,
         agent: user.agent ? {
           id: user.agent.id,
           name: user.agent.name,

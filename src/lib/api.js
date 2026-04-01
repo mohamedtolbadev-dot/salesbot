@@ -234,4 +234,95 @@ export const whatsappAPI = {
     }),
 }
 
+// Appointments APIs
+export const appointmentsAPI = {
+  getAll: (params = {}) => {
+    const cleanParams = Object.fromEntries(
+      Object.entries(params).filter(([_, v]) => v != null)
+    )
+    const query = new URLSearchParams(cleanParams).toString()
+    return fetchAPI(`/api/appointments${query ? `?${query}` : ""}`)
+  },
+  getById: (id) => fetchAPI(`/api/appointments/${id}`),
+  create: (data) =>
+    fetchAPI("/api/appointments", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id, data) =>
+    fetchAPI(`/api/appointments/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  updateStatus: (id, status) =>
+    fetchAPI(`/api/appointments/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+  // ✅ تحديث الحالة مع إرسال رسالة AI تلقائية
+  updateStatusWithMessage: (id, status, sendMessage = true) =>
+    fetchAPI(`/api/appointments/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, sendMessage }),
+    }),
+  delete: (id) =>
+    fetchAPI(`/api/appointments/${id}`, {
+      method: "DELETE",
+    }),
+  // ✅ إرسال رسالة تأكيد أو تذكير
+  sendMessage: (appointmentId, type) =>
+    fetchAPI("/api/appointments/send-message", {
+      method: "POST",
+      body: JSON.stringify({ appointmentId, type }),
+    }),
+}
+
+// Orders APIs
+export const ordersAPI = {
+  getAll: (params = {}) => {
+    const cleanParams = Object.fromEntries(
+      Object.entries(params).filter(([_, v]) => v != null)
+    )
+    const query = new URLSearchParams(cleanParams).toString()
+    return fetchAPI(`/api/orders${query ? `?${query}` : ""}`)
+  },
+  getById: (id) => fetchAPI(`/api/orders/${id}`),
+  create: (data) =>
+    fetchAPI("/api/orders", { method: "POST", body: JSON.stringify(data) }),
+  update: (id, data) =>
+    fetchAPI(`/api/orders/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  updateStatus: (id, status, extra = {}) =>
+    fetchAPI(`/api/orders/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, ...extra }),
+    }),
+  delete: (id) =>
+    fetchAPI(`/api/orders/${id}`, { method: "DELETE" }),
+}
+
+// Invoices API (client view)
+export const invoicesAPI = {
+  getAll: () => fetchAPI("/api/invoices"),
+}
+
+// Admin APIs
+export const adminAPI = {
+  getUsers: () => fetchAPI("/api/admin/users"),
+  deleteUser: (id) => fetchAPI(`/api/admin/users?id=${id}`, { method: "DELETE" }),
+  getInvoices: (params = {}) => {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([_, v]) => v))
+    ).toString()
+    return fetchAPI(`/api/admin/invoices${query ? `?${query}` : ""}`)
+  },
+  createInvoice: (data) =>
+    fetchAPI("/api/admin/invoices", { method: "POST", body: JSON.stringify(data) }),
+  updateInvoice: (id, data) =>
+    fetchAPI(`/api/admin/invoices/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteInvoice: (id) =>
+    fetchAPI(`/api/admin/invoices/${id}`, { method: "DELETE" }),
+  sendInvoice: (id) =>
+    fetchAPI(`/api/admin/invoices/${id}/send`, { method: "POST" }),
+}
+
 export default fetchAPI
