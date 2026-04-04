@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import React, { useState, useEffect, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { statsAPI, conversationsAPI, agentAPI } from "@/lib/api"
 import { getStageConfig, getStageLabel, getStageClassName, getScoreColor, getInitials } from "@/lib/helpers"
@@ -312,158 +312,453 @@ function AgentChip({ icon: Icon, label, value }) {
 }
 
 /* ─────────────── Dashboard Skeleton ─────────────── */
-function Bone({ className }) {
-  return <div className={`animate-pulse bg-secondary rounded-lg ${className}`} />
+const skeletonStyles = `
+  @keyframes shimmer {
+    0%   { background-position: -600px 0; }
+    100% { background-position:  600px 0; }
+  }
+  @keyframes glow-pulse {
+    0%, 100% { opacity: 0.5; }
+    50%       { opacity: 1;   }
+  }
+  @keyframes border-breathe {
+    0%, 100% { border-color: rgba(83,74,183,0.15); box-shadow: 0 0 0 0 rgba(83,74,183,0); }
+    50%       { border-color: rgba(83,74,183,0.40); box-shadow: 0 0 18px 2px rgba(83,74,183,0.12); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0);   }
+  }
+
+  /* ── base bone ── */
+  .sk-bone {
+    border-radius: 8px;
+    background: linear-gradient(
+      90deg,
+      rgba(83,74,183,0.07) 0%,
+      rgba(83,74,183,0.16) 40%,
+      rgba(83,74,183,0.07) 80%
+    );
+    background-size: 600px 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  /* ── card wrapper ── */
+  .sk-card {
+    border-radius: 14px;
+    background: rgba(83,74,183,0.04);
+    border: 1px solid rgba(83,74,183,0.12);
+    animation: border-breathe 3s ease-in-out infinite;
+    overflow: hidden;
+  }
+
+  /* ── stat card (matches bg-brand-600 originals) ── */
+  .sk-stat-card {
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(83,74,183,0.18) 0%, rgba(83,74,183,0.10) 100%);
+    border: 1px solid rgba(83,74,183,0.22);
+    padding: 18px 20px 16px;
+    animation: fade-in 0.5s ease both;
+    overflow: hidden;
+    position: relative;
+  }
+  .sk-stat-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(83,74,183,0.08) 50%,
+      transparent 100%
+    );
+    background-size: 600px 100%;
+    animation: shimmer 2s ease-in-out infinite;
+  }
+
+  /* ── agent card (matches bg-brand-600 solid) ── */
+  .sk-agent-card {
+    border-radius: 14px;
+    background: linear-gradient(145deg, rgba(83,74,183,0.22) 0%, rgba(70,60,160,0.18) 100%);
+    border: 1px solid rgba(83,74,183,0.30);
+    overflow: hidden;
+    animation: border-breathe 3s ease-in-out infinite;
+    position: relative;
+  }
+  .sk-agent-card::before {
+    content: '';
+    position: absolute;
+    top: -60%;
+    left: -40%;
+    width: 180%;
+    height: 180%;
+    background: radial-gradient(circle, rgba(83,74,183,0.12) 0%, transparent 60%);
+    animation: glow-pulse 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  /* ── stagger helpers ── */
+  .sk-d0  { animation-delay: 0ms; }
+  .sk-d1  { animation-delay: 80ms; }
+  .sk-d2  { animation-delay: 160ms; }
+  .sk-d3  { animation-delay: 240ms; }
+  .sk-d4  { animation-delay: 320ms; }
+  .sk-d5  { animation-delay: 400ms; }
+  .sk-d6  { animation-delay: 480ms; }
+
+  /* utility */
+  .sk-row    { display: flex; align-items: center; gap: 10px; }
+  .sk-col    { display: flex; flex-direction: column; gap: 8px; }
+  .sk-circle { border-radius: 9999px !important; }
+  .sk-round  { border-radius: 6px !important; }
+
+  /* responsive */
+  @media (max-width: 1024px) {
+    .sk-main-grid { grid-template-columns: 1fr !important; }
+    .sk-sidebar { order: -1; }
+  }
+  @media (max-width: 768px) {
+    .sk-stat-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+    .sk-header-buttons { display: none !important; }
+    .sk-table-header { display: none !important; }
+    .sk-hidden-mobile { display: none !important; }
+    .sk-desktop-rows { display: none !important; }
+    .sk-mobile-rows { display: block !important; }
+    .sk-mobile-row {
+      flex-direction: row !important;
+      align-items: center !important;
+      gap: 12px !important;
+    }
+    .sk-mobile-row .sk-bone { flex-shrink: 0 !important; }
+    .sk-mobile-row > div { flex: 1 !important; }
+    .sk-filter-tabs { overflow-x: auto !important; }
+    .sk-header-flex {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 12px !important;
+    }
+  }
+  @media (min-width: 769px) {
+    .sk-mobile-rows { display: none !important; }
+  }
+`;
+
+/* ── Bone primitive ── */
+function B({ w, h, r, className = "", style = {} }) {
+  return (
+    <div
+      className={`sk-bone ${className}`}
+      style={{
+        width: w,
+        height: h,
+        borderRadius: r,
+        flexShrink: 0,
+        ...style,
+      }}
+    />
+  );
 }
 
+/* ── Row of avatar + text (conversations) ── */
+function ConvRow({ delay = "" }) {
+  return (
+    <div className={`sk-row ${delay}`} style={{ padding: "14px 16px", borderTop: "1px solid rgba(83,74,183,0.08)" }}>
+      <B w={34} h={34} r="50%" />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 7 }}>
+        <B w={90} h={11} r={6} />
+        <B w="60%" h={10} r={6} />
+      </div>
+      <B w={64} h={22} r={6} className="hidden-mobile" />
+      <B w={52} h={10} r={6} className="hidden-mobile" />
+    </div>
+  );
+}
+
+/* ── Main component ── */
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-5">
+    <>
+      <style dangerouslySetInnerHTML={{ __html: skeletonStyles }} />
 
-      {/* 1. Header */}
-      <div className="flex justify-between items-center">
-        <div className="flex flex-col gap-1.5">
-          <Bone className="h-5 w-32" />
-          <Bone className="h-3 w-48 hidden sm:block" />
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+        {/* ══ 1. HEADER ══ */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }} className="sk-header-flex">
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <B w={120} h={20} r={8} className="sk-d0" />
+            <B w={200} h={12} r={6} className="sk-d1 sk-hidden-mobile" />
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }} className="sk-header-buttons">
+            <B w={110} h={32} r={10} className="sk-d1" />
+            <B w={100} h={32} r={10} className="sk-d2" />
+            <B w={100} h={32} r={10} className="sk-d3" />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Bone className="h-8 w-28 rounded-lg hidden sm:block" />
-          <Bone className="h-8 w-24 rounded-lg hidden sm:block" />
-          <Bone className="h-8 w-24 rounded-lg" />
-        </div>
-      </div>
 
-      {/* 2. Stats — 4 purple-tinted cards matching bg-brand-600 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-brand-600/15 border border-brand-600/20 rounded-xl p-4 sm:p-5 flex flex-col gap-3">
-            <div className="flex items-start justify-between">
-              <Bone className="w-8 h-8 rounded-lg" />
-              <Bone className="w-12 h-5 rounded-md" />
-            </div>
-            <Bone className="h-8 w-20" />
-            <Bone className="h-3 w-28" />
-          </div>
-        ))}
-      </div>
-
-      {/* 3. Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Conversations panel */}
-        <div className="lg:col-span-2 bg-card border border-border rounded-xl overflow-hidden">
-          {/* Panel header row */}
-          <div className="flex items-center justify-between px-4 py-3.5 border-b border-border">
-            <div className="flex items-center gap-2">
-              <Bone className="w-7 h-7 rounded-lg" />
-              <Bone className="w-28 h-4" />
-              <Bone className="w-14 h-5 rounded-md hidden sm:block" />
-            </div>
-            <Bone className="w-16 h-3" />
-          </div>
-          {/* Filter tabs */}
-          <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-border">
-            <Bone className="w-14 h-7 rounded-lg" />
-            <Bone className="w-20 h-7 rounded-lg" />
-            <Bone className="w-20 h-7 rounded-lg" />
-          </div>
-          {/* Table header — desktop only */}
-          <div className="hidden md:flex items-center gap-4 px-4 py-2.5 bg-secondary border-b border-border">
-            {[28, 40, 20, 16].map((w, i) => (
-              <Bone key={i} className={`h-3 shrink-0`} style={{ width: `${w * 4}px`, flex: i === 1 ? 1 : "none" }} />
-            ))}
-          </div>
-          {/* Rows */}
-          <div className="divide-y divide-border">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-3.5">
-                <Bone className="w-8 h-8 rounded-full shrink-0" />
-                <div className="flex-1 flex flex-col gap-1.5">
-                  <Bone className="h-3 w-24" />
-                  <Bone className="h-3 w-36" />
-                </div>
-                <Bone className="w-16 h-5 rounded-md shrink-0 hidden md:block" />
-                <Bone className="w-14 h-3 rounded-full shrink-0 hidden md:block" />
-                <Bone className="w-12 h-5 rounded-md shrink-0 md:hidden" />
+        {/* ══ 2. STAT CARDS (4) ══ */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }} className="sk-stat-grid">
+          {[0, 1, 2, 3].map(i => (
+            <div
+              key={i}
+              className="sk-stat-card sk-d0"
+              style={{ animationDelay: `${i * 80}ms` }}
+            >
+              {/* icon + badge */}
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
+                <B w={32} h={32} r={8} style={{ background: "rgba(83,74,183,0.20)" }} />
+                <B w={44} h={22} r={6} className="sk-hidden-mobile" />
               </div>
-            ))}
-          </div>
+              {/* big number */}
+              <B w={80} h={30} r={6} style={{ marginBottom: 8 }} />
+              {/* label */}
+              <B w={100} h={11} r={5} style={{ opacity: 0.6 }} className="sk-hidden-mobile" />
+              {/* bottom bar */}
+              <div style={{
+                marginTop: 14,
+                height: 2,
+                width: "100%",
+                background: "rgba(83,74,183,0.15)",
+                borderRadius: 99,
+                overflow: "hidden"
+              }}>
+                <div style={{
+                  height: "100%",
+                  width: "60%",
+                  background: "linear-gradient(90deg, rgba(83,74,183,0.3), rgba(83,74,183,0.6))",
+                  borderRadius: 99,
+                  animation: "shimmer 2s ease-in-out infinite",
+                  backgroundSize: "200px 100%",
+                }} />
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Sidebar */}
-        <div className="flex flex-col gap-4">
+        {/* ══ 3. MAIN GRID ══ */}
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }} className="sk-main-grid">
 
-          {/* Funnel card */}
-          <div className="bg-card border border-border rounded-xl p-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Bone className="w-7 h-7 rounded-lg" />
-              <Bone className="w-28 h-4" />
-            </div>
-            {[100, 74, 47, 26, 17].map((pct, i) => (
-              <div key={i} className="flex items-center gap-3 py-1">
-                <Bone className="w-12 h-3" />
-                <div className="flex-1 h-[3px] bg-border rounded-full overflow-hidden">
-                  <div className="h-full bg-secondary animate-pulse rounded-full" style={{ width: `${pct}%` }} />
-                </div>
-                <Bone className="w-5 h-3 shrink-0" />
+          {/* ── Conversations Panel ── */}
+          <div className="sk-card">
+
+            {/* Panel header */}
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "14px 16px",
+              borderBottom: "1px solid rgba(83,74,183,0.08)",
+            }}>
+              <div className="sk-row">
+                <B w={28} h={28} r={8} />
+                <B w={130} h={14} r={6} />
+                <B w={70} h={22} r={6} className="sk-hidden-mobile" />
               </div>
-            ))}
-            <div className="mt-1 pt-3 border-t border-border flex items-center justify-between">
-              <Bone className="h-3 w-28" />
-              <Bone className="h-3 w-10" />
+              <B w={56} h={11} r={5} className="sk-hidden-mobile" />
             </div>
-          </div>
 
-          {/* Agent card */}
-          <div className="bg-brand-600/15 border border-brand-600/20 rounded-xl overflow-hidden">
-            <div className="p-4 sm:p-5 flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Bone className="w-10 h-10 rounded-full" />
-                  <div className="flex flex-col gap-1.5">
-                    <Bone className="w-24 h-4" />
-                    <Bone className="w-16 h-3" />
+            {/* Filter tabs */}
+            <div style={{
+              display: "flex",
+              gap: 8,
+              padding: "10px 16px",
+              borderBottom: "1px solid rgba(83,74,183,0.08)",
+            }} className="sk-filter-tabs">
+              {[56, 80, 80].map((w, i) => (
+                <B key={i} w={w} h={28} r={8} />
+              ))}
+            </div>
+
+            {/* Table header - desktop only */}
+            <div style={{
+              display: "flex",
+              gap: 16,
+              padding: "10px 16px",
+              background: "rgba(83,74,183,0.03)",
+              borderBottom: "1px solid rgba(83,74,183,0.08)",
+            }} className="sk-table-header">
+              {[100, 140, 80, 70].map((w, i) => (
+                <B key={i} w={w} h={10} r={4} />
+              ))}
+            </div>
+
+            {/* Rows - desktop */}
+            <div className="sk-desktop-rows">
+              {[0, 1, 2, 3, 4].map(i => (
+                <ConvRow key={i} delay={`sk-d${i}`} />
+              ))}
+            </div>
+
+            {/* Mobile rows */}
+            <div className="sk-mobile-rows">
+              {[0, 1, 2, 3, 4].map(i => (
+                <div key={i} className="sk-row sk-mobile-row" style={{ padding: "14px 16px", borderTop: "1px solid rgba(83,74,183,0.08)" }}>
+                  <B w={36} h={36} r="50%" />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <B w={100} h={12} r={6} />
+                      <B w={50} h={20} r={6} />
+                    </div>
+                    <B w="80%" h={10} r={6} />
                   </div>
                 </div>
-                <Bone className="w-16 h-5 rounded-full" />
+              ))}
+            </div>
+          </div>
+
+          {/* ── Sidebar ── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }} className="sk-sidebar">
+
+            {/* Funnel card */}
+            <div className="sk-card" style={{ padding: "18px 18px 14px" }}>
+              {/* Header */}
+              <div className="sk-row" style={{ marginBottom: 18 }}>
+                <B w={28} h={28} r={8} />
+                <B w={110} h={14} r={6} />
               </div>
-              <div className="h-px bg-border/40" />
-              <div className="grid grid-cols-2 gap-2">
-                {[...Array(4)].map((_, i) => <Bone key={i} className="h-10 rounded-lg" />)}
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <div className="flex justify-between">
-                  <Bone className="h-3 w-24" />
-                  <Bone className="h-3 w-10" />
+
+              {/* Funnel bars */}
+              {[100, 74, 47, 26, 17].map((pct, i) => (
+                <div key={i} className="sk-row" style={{ marginBottom: 10 }}>
+                  <B w={48} h={10} r={4} />
+                  <div style={{
+                    flex: 1,
+                    height: 3,
+                    background: "rgba(83,74,183,0.08)",
+                    borderRadius: 99,
+                    overflow: "hidden",
+                  }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${pct}%`,
+                      borderRadius: 99,
+                      background: "linear-gradient(90deg, rgba(83,74,183,0.25), rgba(83,74,183,0.50))",
+                      animation: "shimmer 1.8s ease-in-out infinite",
+                      backgroundSize: "200px 100%",
+                      transition: "width 0.8s ease",
+                    }} />
+                  </div>
+                  <B w={18} h={10} r={4} />
                 </div>
-                <Bone className="h-1 w-full rounded-full" />
+              ))}
+
+              {/* Footer rate */}
+              <div style={{
+                marginTop: 10,
+                paddingTop: 12,
+                borderTop: "1px solid rgba(83,74,183,0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+              }}>
+                <B w={100} h={10} r={4} />
+                <B w={36} h={10} r={4} />
               </div>
             </div>
-            <Bone className="h-9 w-full rounded-none" />
-          </div>
 
-          {/* Quick Actions Strip */}
-          <div className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-2">
-            <div className="flex-1 flex flex-col items-center gap-1.5 py-2">
-              <Bone className="w-5 h-5 rounded-md" />
-              <Bone className="w-14 h-3" />
-            </div>
-            <div className="w-px h-8 bg-border shrink-0" />
-            <div className="flex-1 flex flex-col items-center gap-1.5 py-2">
-              <Bone className="w-5 h-5 rounded-md" />
-              <Bone className="w-14 h-3" />
-            </div>
-            <div className="w-px h-8 bg-border shrink-0" />
-            <div className="flex-1 flex flex-col items-center gap-1.5 py-2">
-              <Bone className="w-5 h-5 rounded-md" />
-              <Bone className="w-14 h-3" />
-            </div>
-          </div>
+            {/* Agent card */}
+            <div className="sk-agent-card" style={{ position: "relative" }}>
+              <div style={{ padding: "16px 16px 12px" }}>
 
+                {/* Agent header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <div className="sk-row">
+                    {/* Avatar glow ring */}
+                    <div style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: "50%",
+                      background: "rgba(83,74,183,0.25)",
+                      border: "2px solid rgba(83,74,183,0.30)",
+                      flexShrink: 0,
+                      animation: "glow-pulse 2.5s ease-in-out infinite",
+                    }} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      <B w={80} h={14} r={6} style={{ background: "rgba(255,255,255,0.18)" }} />
+                      <B w={56} h={10} r={4} style={{ background: "rgba(255,255,255,0.10)" }} />
+                    </div>
+                  </div>
+                  {/* Active badge */}
+                  <B w={64} h={22} r={99} style={{ background: "rgba(52,211,153,0.20)", border: "1px solid rgba(52,211,153,0.25)" }} />
+                </div>
+
+                {/* Divider */}
+                <div style={{ height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 14 }} />
+
+                {/* 2×2 chip grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+                  {[0, 1, 2, 3].map(i => (
+                    <div key={i} style={{
+                      height: 44,
+                      borderRadius: 10,
+                      background: "rgba(255,255,255,0.07)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      padding: "8px 10px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 5,
+                    }}>
+                      <B w={32} h={9} r={4} style={{ background: "rgba(255,255,255,0.12)" }} />
+                      <B w="70%" h={11} r={4} style={{ background: "rgba(255,255,255,0.18)" }} />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Conv-rate bar */}
+                <div style={{ marginBottom: 2 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <B w={90} h={10} r={4} style={{ background: "rgba(255,255,255,0.12)" }} />
+                    <B w={30} h={10} r={4} style={{ background: "rgba(255,255,255,0.18)" }} />
+                  </div>
+                  <div style={{
+                    height: 4,
+                    width: "100%",
+                    borderRadius: 99,
+                    background: "rgba(255,255,255,0.08)",
+                    overflow: "hidden",
+                  }}>
+                    <div style={{
+                      height: "100%",
+                      width: "42%",
+                      borderRadius: 99,
+                      background: "linear-gradient(90deg, rgba(255,255,255,0.30), rgba(255,255,255,0.65))",
+                      animation: "shimmer 2s ease-in-out infinite",
+                      backgroundSize: "200px 100%",
+                    }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* CTA button row */}
+              <div style={{
+                padding: "10px 16px",
+                borderTop: "1px solid rgba(255,255,255,0.07)",
+                background: "rgba(255,255,255,0.04)",
+                display: "flex",
+                justifyContent: "center",
+              }}>
+                <B w={120} h={13} r={6} style={{ background: "rgba(255,255,255,0.14)" }} />
+              </div>
+            </div>
+
+            {/* Quick Actions Strip */}
+            <div className="sk-card" style={{ padding: "14px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+                {[0, 1, 2].map(i => (
+                  <React.Fragment key={i}>
+                    {i > 0 && <div style={{ width: 1, height: 32, background: "rgba(83,74,183,0.10)", flexShrink: 0 }} />}
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 7, padding: "8px 0" }}>
+                      <B w={20} h={20} r={5} />
+                      <B w={52} h={10} r={4} />
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+          </div>
         </div>
       </div>
-    </div>
-  )
+    </>
+  );
 }
 
 /* ─────────────── Main Page ─────────────── */
@@ -696,7 +991,7 @@ export default function DashboardPage() {
                     </td>
                     <td className="px-4 py-3.5">
                       <span className={`text-[13px] font-semibold px-2 py-0.5 rounded-md border shrink-0 ${getStageClassName(conv.stage, conv.type)}`}>
-                        {getStageLabel(conv.stage, conv.type)}
+                        {getStageLabel(conv.stage, conv.type, t)}
                       </span>
                     </td>
                     <td className="px-4 py-3.5">
@@ -751,7 +1046,7 @@ export default function DashboardPage() {
                         )}
                       </div>
                       <span className={`text-[13px] font-semibold px-2 py-0.5 rounded-md border shrink-0 ${getStageClassName(conv.stage, conv.type)}`}>
-                        {getStageLabel(conv.stage, conv.type)}
+                        {getStageLabel(conv.stage, conv.type, t)}
                       </span>
                     </div>
                     <p className="text-[13px] text-muted-foreground truncate mt-0.5">

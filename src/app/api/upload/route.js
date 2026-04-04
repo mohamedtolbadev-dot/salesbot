@@ -49,7 +49,7 @@ export async function POST(request) {
 
     // Upload to Cloudinary with security options
     const result = await cloudinary.uploader.upload(dataURI, {
-      folder: 'salesbot/products',
+      folder: 'wakil/products',
       resource_type: 'image',
       allowed_formats: ['jpg', 'png', 'webp', 'gif'],
     });

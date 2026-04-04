@@ -9,6 +9,21 @@ import { cn } from "@/lib/utils"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { Loader2, User, Mail, Lock, ArrowLeft, CheckCircle, ShoppingBag, Wrench } from "lucide-react"
 
+// Theme hook for register page
+function useTheme() {
+  const [theme, setTheme] = useState("light")
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme")
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
+    const initial = saved || (prefersDark ? "dark" : "light")
+    setTheme(initial)
+    if (initial === "dark") document.documentElement.classList.add("dark")
+  }, [])
+
+  return { theme }
+}
+
 // Google Icon Component - Brand Colors
 function GoogleIcon({ size = 20 }) {
   return (
@@ -24,6 +39,8 @@ function GoogleIcon({ size = 20 }) {
 export default function RegisterPage() {
   const router = useRouter()
   const { t } = useLanguage()
+  const { theme } = useTheme()
+  const isDark = theme === "dark"
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -112,7 +129,23 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4" dir="rtl">
+    <div className="min-h-screen flex items-center justify-center relative p-4" dir="rtl">
+      {/* ✅ خلفية الصفحة — fixed على مستوى الجذر */}
+      <div
+        className="fixed inset-0 -z-20 transition-all duration-700"
+        style={{
+          backgroundImage: isDark
+            ? "url('/img_hero_bg/img_home_page_darck_bg.jpg')"
+            : "url('/img_hero_bg/img_hero_bg.jpg')",
+          backgroundSize: "cover",
+          backgroundPosition: "center center",
+          backgroundRepeat: "no-repeat",
+        }}
+      />
+      {/* ✅ overlay خفيف يحسن قراءة النص */}
+      <div className={`fixed inset-0 -z-10 transition-all duration-700
+        ${isDark ? 'bg-black/50' : 'bg-white/45'}`}
+      />
       {/* Load Google Identity Services */}
       <Script
         src="https://accounts.google.com/gsi/client"
@@ -144,8 +177,11 @@ export default function RegisterPage() {
           </Link>
         </div>
 
-        {/* Form Card - Dashboard Style */}
-        <div className="bg-card border border-border rounded-xl p-8 hover:shadow-lg hover:border-brand-300 transition-all duration-300">
+        {/* Form Card — matching home page style */}
+        <div className={`w-full max-w-md backdrop-blur-md rounded-2xl p-8 border transition-all duration-300 hover:shadow-xl
+          ${isDark 
+            ? 'bg-black/40 border-white/20 hover:bg-black/50 hover:border-white/30 hover:shadow-white/5' 
+            : 'bg-white/70 border-brand-200/50 hover:bg-white/80 hover:border-brand-300/50 hover:shadow-brand-600/10'}`}>
           
           {/* Header with Icon */}
           <div className="flex items-center gap-3 mb-6">
@@ -177,8 +213,11 @@ export default function RegisterPage() {
             }}
             disabled={googleLoading}
             className={cn(
-              "w-full flex items-center justify-center gap-3 bg-white border border-border text-foreground py-2.5 rounded-lg font-semibold hover:bg-secondary transition-all mb-4",
-              "disabled:opacity-50 disabled:cursor-not-allowed"
+              "w-full flex items-center justify-center gap-3 border py-2.5 rounded-lg font-semibold transition-all mb-4",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+              isDark 
+                ? "bg-white/10 border-white/20 text-white hover:bg-white/20" 
+                : "bg-white border-border text-foreground hover:bg-secondary"
             )}
           >
             {googleLoading ? (

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 80" width="300" height="80">
+  <!-- Icon -->
+  <rect x="0" y="6" width="58" height="58" rx="16" fill="#534AB7"/>
+  <rect x="9" y="14" width="38" height="28" rx="8" fill="white"/>
+  <polygon points="13,42 7,52 21,42" fill="white"/>
+  <circle cx="17" cy="28" r="3.2" fill="#534AB7"/>
+  <circle cx="28" cy="28" r="3.2" fill="#534AB7"/>
+  <circle cx="39" cy="28" r="3.2" fill="#534AB7"/>
+  <path d="M53 16 Q57 20 53 24" stroke="#534AB7" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.4"/>
+  <path d="M57 12 Q64 20 57 28" stroke="#534AB7" stroke-width="1.8" fill="none" stroke-linecap="round" opacity="0.25"/>
+
+  <!-- Wordmark -->
+  <text x="72" y="46" font-family="'Segoe UI', Arial, sans-serif" font-weight="700" font-size="38" letter-spacing="-1">
+    <tspan fill="#ffffff">Wakil</tspan><tspan fill="#534AB7">.ma</tspan>
+  </text>
+  <!-- Tagline -->
+  <text x="73" y="64" font-family="'Segoe UI', Arial, sans-serif" font-size="10" fill="#ffffff" opacity="0.3" letter-spacing="2.5">AI WHATSAPP AGENT</text>
+</svg>

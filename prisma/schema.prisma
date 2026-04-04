@@ -69,6 +69,9 @@ model Agent {
   orderDeliverMessage   String? @db.Text
   orderCancelledMessage String? @db.Text
 
+  // ✅ رابط التتبع من شركة التوصيل (مثال: https://tracking.company.com/?code={tracking})
+  trackingUrlTemplate   String? @db.Text
+
   user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   objectionReplies  ObjectionReply[]
 

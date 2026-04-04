@@ -22,7 +22,7 @@ export async function POST(request) {
       phoneId,
       token,
       to: phoneId,
-      message: "✅ تم ربط SalesBot.ma بنجاح!"
+      message: "✅ تم ربط wakil.ma بنجاح!"
     })
 
     if (testResult.isTokenExpired) {

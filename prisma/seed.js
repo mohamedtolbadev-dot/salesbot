@@ -23,7 +23,7 @@ async function main() {
   const user = await prisma.user.create({
     data: {
       name: "ليلى المراكشي",
-      email: "layla@salesbot.ma",
+      email: "layla@wakil.ma",
       password: hashedPassword,
       phone: "0661234567",
       storeName: "بوتيك ليلى",
@@ -132,7 +132,7 @@ async function main() {
   })
 
   console.log("✅ تم إنشاء البيانات التجريبية بنجاح!")
-  console.log("📧 الإيميل: layla@salesbot.ma")
+  console.log("📧 الإيميل: layla@wakil.ma")
   console.log("🔑 كلمة المرور: password123")
 }
 

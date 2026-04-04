@@ -108,7 +108,7 @@ export function generateInvoicePDF(invoice) {
 
       // Footer
       doc.fontSize(10).fillColor("#9ca3af").text("شكراً لثقتكم!", { align: "center" })
-      doc.text("SalesBot.ma - وكيل المبيعات الذكي", { align: "center" })
+      doc.text("wakil.ma - وكيل المبيعات الذكي", { align: "center" })
 
       doc.end()
     } catch (error) {

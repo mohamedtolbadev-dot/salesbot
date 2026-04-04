@@ -114,7 +114,7 @@ function StatusBadge({ status }) {
 }
 
 /* ─── Status Dropdown ─────────────────────────────────────── */
-function StatusDropdown({ orderId, currentStatus, onUpdated, sendMessage }) {
+function StatusDropdown({ orderId, currentStatus, onUpdated, sendMessage, trackingNumber }) {
   const { t } = useLanguage()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -123,7 +123,8 @@ function StatusDropdown({ orderId, currentStatus, onUpdated, sendMessage }) {
     if (newStatus === currentStatus) { setOpen(false); return }
     setLoading(true)
     try {
-      await ordersAPI.updateStatus(orderId, newStatus, { sendMessage })
+      console.log("[DEBUG Frontend] Sending trackingNumber:", trackingNumber)
+      await ordersAPI.updateStatus(orderId, newStatus, { sendMessage, trackingNumber })
       onUpdated(orderId, newStatus)
     } catch (err) {
       console.error(err)
@@ -179,7 +180,7 @@ function DeleteModal({ open, name, onConfirm, onCancel, isProcessing }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
       <div
-        className="relative w-full max-w-sm border border-border rounded-2xl shadow-2xl overflow-hidden bg-card"
+        className="relative w-full max-w-sm border border-border rounded-3xl shadow-2xl overflow-hidden bg-card"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-red-500/5">
           <div className="flex items-center gap-2">
@@ -221,7 +222,27 @@ function DeleteModal({ open, name, onConfirm, onCancel, isProcessing }) {
 /* ─── Order Detail Modal ──────────────────────────────────── */
 function OrderDetailModal({ order, onClose, onStatusChange, onDeleteRequest, sendMessage }) {
   const { t, language } = useLanguage()
+  const [trackingNumber, setTrackingNumber] = useState(order?.trackingNumber || "")
+  const [savingTracking, setSavingTracking] = useState(false)
+
+  useEffect(() => {
+    setTrackingNumber(order?.trackingNumber || "")
+  }, [order?.trackingNumber])
+
   if (!order) return null
+
+  async function saveTrackingNumber() {
+    setSavingTracking(true)
+    try {
+      await ordersAPI.update(order.id, { trackingNumber })
+      // Update local order state
+      order.trackingNumber = trackingNumber
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSavingTracking(false)
+    }
+  }
 
   const date = new Date(order.createdAt).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR', {
     day: "numeric", month: "long", year: "numeric",
@@ -238,14 +259,13 @@ function OrderDetailModal({ order, onClose, onStatusChange, onDeleteRequest, sen
     { icon: Tag,        label: t('orders.qty'),           value: `${order.quantity || 1}` },
     { icon: DollarSign, label: t('orders.price'),         value: `${order.totalAmount || 0} ${t('common.currency')}` },
     { icon: MapPin,     label: t('common.address'),       value: order.address || "—" },
-    { icon: Truck,      label: t('orders.tracking'),      value: order.trackingNumber || "—" },
     order.notes && { icon: StickyNote, label: t('common.notes'), value: order.notes },
   ].filter(Boolean)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50 " onClick={onClose} />
-      <div className="relative w-full max-w-md border border-border rounded-2xl shadow-2xl bg-card flex flex-col max-h-[90vh]">
+      <div className="absolute inset-0 bg-black/60 dark:bg-black/80" onClick={onClose} />
+      <div className="relative w-full max-w-md border border-border shadow-2xl bg-card flex flex-col max-h-[90vh]" style={{ borderRadius: "24px" }}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-secondary shrink-0">
           <div className="flex items-center gap-2.5">
@@ -269,7 +289,7 @@ function OrderDetailModal({ order, onClose, onStatusChange, onDeleteRequest, sen
         <div className="p-5 flex flex-col gap-3 overflow-y-auto">
           <div className="grid grid-cols-1 gap-2">
             {rows.map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-start gap-3 py-2.5 px-3 rounded-xl bg-secondary border border-border">
+              <div key={label} className="flex items-start gap-3 py-2.5 px-3 rounded-xl border border-border/60">
                 <Icon size={15} className="text-muted-foreground mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] text-muted-foreground">{label}</p>
@@ -277,6 +297,30 @@ function OrderDetailModal({ order, onClose, onStatusChange, onDeleteRequest, sen
                 </div>
               </div>
             ))}
+            
+            {/* حقل رقم التتبع القابل للتعديل */}
+            <div className="flex items-start gap-3 py-2.5 px-3 rounded-xl border border-border/60">
+              <Truck size={15} className="text-muted-foreground mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] text-muted-foreground mb-1">{t('orders.tracking')}</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={trackingNumber}
+                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    placeholder={t('orders.tracking_placeholder') || "أدخل رقم التتبع"}
+                    className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-[13px] focus:outline-none focus:border-brand-600"
+                  />
+                  <button
+                    onClick={saveTrackingNumber}
+                    disabled={savingTracking || trackingNumber === (order.trackingNumber || "")}
+                    className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-[12px] font-medium hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {savingTracking ? <Loader2 size={14} className="animate-spin" /> : t('common.save')}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           <p className="text-[12px] text-muted-foreground text-center pt-1">{date}</p>
         </div>
@@ -295,6 +339,7 @@ function OrderDetailModal({ order, onClose, onStatusChange, onDeleteRequest, sen
             currentStatus={order.status}
             onUpdated={(id, status) => { onStatusChange(id, status) }}
             sendMessage={sendMessage}
+            trackingNumber={trackingNumber}
           />
           <button
             onClick={() => { onClose(); onDeleteRequest(order.id, order.productName) }}
@@ -311,6 +356,7 @@ function OrderDetailModal({ order, onClose, onStatusChange, onDeleteRequest, sen
 /* ─── Order Card ──────────────────────────────────────────── */
 function OrderCard({ order, onStatusChange, onDeleteRequest, sendMessage, onOpenDetail }) {
   const { t, language } = useLanguage()
+  const [trackingNumber] = useState(order?.trackingNumber || "")
 
   const date = new Date(order.createdAt).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR', {
     day: "numeric", month: "short", year: "numeric",
@@ -363,6 +409,7 @@ function OrderCard({ order, onStatusChange, onDeleteRequest, sendMessage, onOpen
           currentStatus={order.status}
           onUpdated={onStatusChange}
           sendMessage={sendMessage}
+          trackingNumber={trackingNumber}
         />
         <button
           onClick={e => { e.stopPropagation(); onOpenDetail(order) }}
@@ -421,7 +468,7 @@ function AddOrderModal({ onClose, onCreated }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg border border-border rounded-2xl shadow-2xl bg-card">
+      <div className="relative w-full max-w-lg border border-border rounded-3xl shadow-2xl bg-card">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 bg-secondary/50">
           <div className="flex items-center gap-2">
             <span className="w-1 h-4 rounded-full bg-brand-600" />
@@ -725,13 +772,15 @@ export default function OrdersPage() {
         />
       )}
 
-      <DeleteModal
-        open={deleteModal.open}
-        name={deleteModal.name}
-        onConfirm={confirmDelete}
-        onCancel={cancelDelete}
-        isProcessing={deleteModal.deleting}
-      />
+      {deleteModal.open && (
+        <DeleteModal
+          open={deleteModal.open}
+          name={deleteModal.name}
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
+          isProcessing={deleteModal.deleting}
+        />
+      )}
     </div>
   )
 }

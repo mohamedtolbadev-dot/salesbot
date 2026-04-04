@@ -25,7 +25,7 @@ export async function POST(request) {
       phoneId: agent.whatsappPhoneId,
       token: agent.whatsappToken,
       to: testPhone || agent.whatsappPhoneId,
-      message: `مرحباً! 👋 أنا ${agent.name} من SalesBot.ma\n\nهذه رسالة تجريبية للتأكد من اشتغال Agent ✅`,
+      message: `✅ تم ربط wakil.ma بنجاح! 👋 أنا ${agent.name} من wakil.ma\n\nهذه رسالة تجريبية للتأكد من اشتغال Agent ✅`,
     })
 
     if (result.isTokenExpired) {

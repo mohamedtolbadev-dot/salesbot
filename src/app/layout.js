@@ -2,8 +2,8 @@ import "./globals.css";
 import { Providers } from "@/components/shared/Providers";
 
 export const metadata = {
-  title: "SalesBot.ma",
-  description: "AI Sales Agent على واتساب",
+  title: "Wakil.ma",
+  description: "وكيل مبيعاتك الذكي على واتساب",
   icons: {
     icon: "/favicon.svg",
   },

@@ -50,6 +50,7 @@ export async function PUT(request) {
       orderShipMessage,
       orderDeliverMessage,
       orderCancelledMessage,
+      trackingUrlTemplate,
     } = body
 
     const agent = await prisma.agent.update({
@@ -94,6 +95,7 @@ export async function PUT(request) {
         ...(orderShipMessage !== undefined && { orderShipMessage }),
         ...(orderDeliverMessage !== undefined && { orderDeliverMessage }),
         ...(orderCancelledMessage !== undefined && { orderCancelledMessage }),
+        ...(trackingUrlTemplate !== undefined && { trackingUrlTemplate }),
       }
     })
 

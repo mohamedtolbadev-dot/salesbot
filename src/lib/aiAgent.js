@@ -144,8 +144,8 @@ export async function generateStatusUpdateMessage({
         headers: {
           "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://salesbot.ma",
-          "X-Title": "SalesBot.ma",
+          "HTTP-Referer": "https://wakil.ma.ma",
+          "X-Title": "Wakil.ma",
         },
         body: JSON.stringify({
           model: "openai/gpt-4o-mini",
@@ -648,8 +648,8 @@ export async function generateAIReply({
           headers: {
             "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://salesbot.ma",
-            "X-Title": "SalesBot.ma",
+            "HTTP-Referer": "https://wakil.ma",
+            "X-Title": "wakil.ma",
           },
           body: JSON.stringify({
             model: "openai/gpt-4o-mini",

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react"
 import { statsAPI } from "@/lib/api"
-import { formatAmount } from "@/lib/helpers"
+import { formatAmount, translateObjectionReason } from "@/lib/helpers"
 import { cn } from "@/lib/utils"
 import {
   TrendingUp, TrendingDown, Users, MessageCircle,
@@ -524,7 +524,7 @@ export default function AnalyticsPage() {
             return (
               <div key={i} className="flex items-center gap-3 py-1 px-1 rounded-lg hover:bg-secondary/40 transition-colors cursor-default group/row">
                 <span className="w-5 h-5 rounded-md bg-secondary flex items-center justify-center text-[11px] font-bold text-brand-600 shrink-0">{i + 1}</span>
-                <span className="text-[13px] font-medium text-muted-foreground min-w-[120px] group-hover/row:text-foreground transition-colors">{item.reason}</span>
+                <span className="text-[13px] font-medium text-muted-foreground min-w-[120px] group-hover/row:text-foreground transition-colors">{translateObjectionReason(item.reason, t)}</span>
                 <ProgressBar pct={pct} color="#BA7517" delay={300 + i * 80} />
                 <span className="text-[13px] font-bold text-foreground min-w-[24px] text-left tabular-nums">{item.count}</span>
               </div>

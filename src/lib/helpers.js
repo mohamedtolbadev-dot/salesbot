@@ -6,15 +6,15 @@ export function formatAmount(amount, locale = "ar-MA") {
 }
 
 // وقت نسبي بالعربية
-export function timeAgo(dateStr) {
+export function timeAgo(dateStr, t = null) {
   const diff = Date.now() - new Date(dateStr).getTime()
   const minutes = Math.floor(diff / 60000)
   const hours = Math.floor(diff / 3600000)
   const days = Math.floor(diff / 86400000)
-  if (minutes < 2) return "الآن"
-  if (minutes < 60) return `منذ ${minutes} دقيقة`
-  if (hours < 24) return `منذ ${hours} ساعة`
-  return `منذ ${days} يوم`
+  if (minutes < 2) return t ? t('time.now') : "الآن"
+  if (minutes < 60) return t ? t('time.minutes').replace('{n}', minutes) : `منذ ${minutes} دقيقة`
+  if (hours < 24) return t ? t('time.hours').replace('{n}', hours) : `منذ ${hours} ساعة`
+  return t ? t('time.days').replace('{n}', days) : `منذ ${days} يوم`
 }
 
 // لون وتسمية مرحلة المحادثة
@@ -31,11 +31,22 @@ export function getStageConfig(stage) {
 }
 
 // ✅ دالة تعيد label حسب stage + type
-export function getStageLabel(stage, type = "product") {
+export function getStageLabel(stage, type = "product", t = null) {
   if (stage === "CLOSED") {
+    if (t) {
+      return type === "service" ? t('conv.stage_booked') : t('conv.stage_ordered')
+    }
     return type === "service"
       ? "تم الحجز 📅"
       : "تم الطلب ✅"
+  }
+  // For other stages, return translated label if t is provided
+  if (t) {
+    const stageKey = stage?.toLowerCase()
+    const translated = t(`stage.${stageKey}`)
+    if (translated !== `stage.${stageKey}`) {
+      return translated
+    }
   }
   return getStageConfig(stage).label
 }
@@ -72,4 +83,89 @@ export function getCustomerTagConfig(tag) {
 export function getInitials(name) {
   if (!name || typeof name !== 'string') return "؟"
   return name.charAt(0).toUpperCase()
+}
+
+// ✅ دالة ترجم أسباب الاعتراض
+export function translateObjectionReason(reason, t) {
+  if (!t) return reason
+  
+  // Map common objection reason patterns to translation keys
+  const reasonMap = {
+    // Price related
+    "السعر غالي": "objection.expensive",
+    "سعر غالي": "objection.expensive",
+    "prix": "objection.price",
+    "cher": "objection.expensive",
+    "expensive": "objection.expensive",
+    "price": "objection.price",
+    // Quality
+    "الجودة": "objection.quality",
+    "جودة": "objection.quality",
+    "qualité": "objection.quality",
+    "quality": "objection.quality",
+    // Size
+    "الحجم": "objection.size",
+    "حجم": "objection.size",
+    "taille": "objection.size",
+    "size": "objection.size",
+    // Color
+    "اللون": "objection.color",
+    "لون": "objection.color",
+    "couleur": "objection.color",
+    "color": "objection.color",
+    // Delivery
+    "التوصيل": "objection.delivery",
+    "توصيل": "objection.delivery",
+    "livraison": "objection.delivery",
+    "delivery": "objection.delivery",
+    // Trust/Doubt
+    "الثقة": "objection.trust",
+    "ثقة": "objection.trust",
+    "confiance": "objection.trust",
+    "الشك": "objection.doubt",
+    "شك": "objection.doubt",
+    "doute": "objection.doubt",
+    "doubt": "objection.doubt",
+    // Comparison
+    "المقارنة": "objection.compare",
+    "مقارنة": "objection.compare",
+    "comparaison": "objection.compare",
+    "compare": "objection.compare",
+    // Time
+    "الوقت": "objection.time",
+    "وقت": "objection.time",
+    "délai": "objection.time",
+    "time": "objection.time",
+    // Availability
+    "التوفر": "objection.availability",
+    "توفر": "objection.availability",
+    "disponibilité": "objection.availability",
+    "availability": "objection.availability",
+    // Guarantee
+    "الضمان": "objection.guarantee",
+    "ضمان": "objection.guarantee",
+    "garantie": "objection.guarantee",
+    "guarantee": "objection.guarantee",
+  }
+  
+  // Try exact match first
+  if (reasonMap[reason]) {
+    return t(reasonMap[reason])
+  }
+  
+  // Try case-insensitive match
+  const lowerReason = reason?.toLowerCase()
+  if (reasonMap[lowerReason]) {
+    return t(reasonMap[lowerReason])
+  }
+  
+  // Try partial match
+  for (const [key, translationKey] of Object.entries(reasonMap)) {
+    if (lowerReason?.includes(key.toLowerCase())) {
+      return t(translationKey)
+    }
+  }
+  
+  // Return original if no translation found
+  return reason
 }

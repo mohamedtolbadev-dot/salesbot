@@ -20,12 +20,12 @@ function useStageLabel() {
       return type === "service" ? t('conv.stage_booked') : t('conv.stage_ordered')
     }
     const labels = {
-      GREETING: t('conv.stage_greeting'),
-      DISCOVERY: t('conv.stage_discovery'),
-      PITCHING: t('conv.stage_pitching'),
-      OBJECTION: t('conv.stage_objection'),
-      CLOSING: t('conv.stage_closing'),
-      ABANDONED: t('conv.stage_abandoned'),
+      GREETING:  t('stage.greeting'),
+      DISCOVERY: t('stage.discovery'),
+      PITCHING:  t('stage.pitching'),
+      OBJECTION: t('stage.objection'),
+      CLOSING:   t('stage.closing'),
+      ABANDONED: t('stage.abandoned'),
     }
     return labels[stage] || stage
   }
@@ -47,16 +47,6 @@ function ConversationsSkeleton() {
             var(--color-background-secondary, rgba(0,0,0,0.06)) 25%,
             var(--color-background-tertiary,  rgba(0,0,0,0.11)) 50%,
             var(--color-background-secondary, rgba(0,0,0,0.06)) 75%
-          );
-          background-size: 700px 100%;
-          animation: sk-shimmer 1.5s ease-in-out infinite;
-        }
-        .sk-unread {
-          border-radius: 4px;
-          background: linear-gradient(90deg,
-            rgba(83,74,183,0.30) 25%,
-            rgba(83,74,183,0.52) 50%,
-            rgba(83,74,183,0.30) 75%
           );
           background-size: 700px 100%;
           animation: sk-shimmer 1.5s ease-in-out infinite;
@@ -183,7 +173,6 @@ function ScoreBar({ score, color, width = "w-10" }) {
   const safeScore = typeof score === "number" && !isNaN(score)
     ? Math.min(100, Math.max(0, score))
     : 0
-
   return (
     <div className="flex items-center gap-1.5">
       <div className={`${width} h-[3px] bg-border rounded-full overflow-hidden`}>
@@ -248,12 +237,10 @@ function MessageBubble({ msg, customerName }) {
   const isAgent = msg.role === "AGENT"
   return (
     <div className={cn("flex gap-2 items-end", !isAgent && "flex-row-reverse")}>
-      <div
-        className={cn(
-          "w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0",
-          isAgent ? "bg-secondary text-brand-600" : "bg-brand-600 text-white"
-        )}
-      >
+      <div className={cn(
+        "w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0",
+        isAgent ? "bg-secondary text-brand-600" : "bg-brand-600 text-white"
+      )}>
         {isAgent ? "و" : getInitials(customerName)}
       </div>
       <div className={cn(
@@ -269,22 +256,22 @@ function MessageBubble({ msg, customerName }) {
 }
 
 /* ════════════════════════════════════════════════
-   FILTER CONFIG — منتجات وخدمات
+   FILTER CONFIG
 ════════════════════════════════════════════════ */
 const STAGE_FILTERS = {
   product: [
-    { key: "all",      labelKey: "conv.filter_all"    },
-    { key: "PITCHING", labelKey: "conv.filter_pitching" },
-    { key: "OBJECTION",labelKey: "conv.filter_objection" },
-    { key: "CLOSING",  labelKey: "conv.filter_closing"  },
-    { key: "CLOSED",   labelKey: "conv.filter_closed"   },
+    { key: "all",       labelKey: "conv.filter_all"      },
+    { key: "PITCHING",  labelKey: "conv.filter_pitching"  },
+    { key: "OBJECTION", labelKey: "conv.filter_objection" },
+    { key: "CLOSING",   labelKey: "conv.filter_closing"   },
+    { key: "CLOSED",    labelKey: "conv.filter_closed"    },
   ],
   service: [
-    { key: "all",      labelKey: "conv.filter_all"    },
-    { key: "PITCHING", labelKey: "conv.filter_pitching" },
-    { key: "OBJECTION",labelKey: "conv.filter_objection" },
-    { key: "CLOSING",  labelKey: "conv.filter_booking"  },
-    { key: "CLOSED",   labelKey: "conv.filter_closed"   },
+    { key: "all",       labelKey: "conv.filter_all"      },
+    { key: "PITCHING",  labelKey: "conv.filter_pitching"  },
+    { key: "OBJECTION", labelKey: "conv.filter_objection" },
+    { key: "CLOSING",   labelKey: "conv.filter_booking"   },
+    { key: "CLOSED",    labelKey: "conv.filter_closed"    },
   ],
 }
 
@@ -295,18 +282,17 @@ function ConversationsContent() {
   const { t } = useLanguage()
   const getStageLabel = useStageLabel()
   const searchParams = useSearchParams()
-  const [conversations, setConversations]   = useState([])
-  const [loading, setLoading]               = useState(true)
-  const [error, setError]                   = useState(null)
-  const [convType, setConvType]             = useState("product") // ← التاب الرئيسي
-  const [filter, setFilter]                 = useState("all")
-  const [search, setSearch]                 = useState("")
-  const [selected, setSelected]             = useState(null)
-  const [messages, setMessages]             = useState([])
-  const [messagesLoading, setMessagesLoading] = useState(false)
-  const [deleteModal, setDeleteModal]       = useState({ open: false, id: null, name: "" })
+  const [conversations, setConversations]       = useState([])
+  const [loading, setLoading]                   = useState(true)
+  const [error, setError]                       = useState(null)
+  const [convType, setConvType]                 = useState("product")
+  const [filter, setFilter]                     = useState("all")
+  const [search, setSearch]                     = useState("")
+  const [selected, setSelected]                 = useState(null)
+  const [messages, setMessages]                 = useState([])
+  const [messagesLoading, setMessagesLoading]   = useState(false)
+  const [deleteModal, setDeleteModal]           = useState({ open: false, id: null, name: "" })
 
-  // عند تغيير التاب — صفّر الفلتر والمحادثة
   const handleTypeChange = useCallback((type) => {
     setConvType(type)
     setFilter("all")
@@ -350,13 +336,12 @@ function ConversationsContent() {
 
   useEffect(() => { fetchConversations() }, [fetchConversations])
 
-  // ── Auto-select conversation from URL ?id= param (e.g. from appointments page) ──
+  // Auto-select from URL ?id= param
   useEffect(() => {
     const targetId = searchParams?.get("id")
     if (!targetId || conversations.length === 0) return
     const match = conversations.find(c => c.id === targetId)
     if (!match) return
-    // Switch to the right type tab if needed
     const neededType = match.type === "service" ? "service" : "product"
     if (convType !== neededType) setConvType(neededType)
     setFilter("all")
@@ -376,23 +361,16 @@ function ConversationsContent() {
     })()
   }, [selected?.id])
 
-  // ── فصل المحادثات حسب النوع ──
   const productConvs = useMemo(() =>
-    conversations.filter(c => {
-      if (c.stage === "ARCHIVED") return false
-      return c.type !== "service"
-    }), [conversations])
+    conversations.filter(c => c.stage !== "ARCHIVED" && c.type !== "service"),
+    [conversations])
 
   const serviceConvs = useMemo(() =>
-    conversations.filter(c => {
-      if (c.stage === "ARCHIVED") return false
-      return c.type === "service"
-    }), [conversations])
+    conversations.filter(c => c.stage !== "ARCHIVED" && c.type === "service"),
+    [conversations])
 
-  // ── المحادثات النشطة حسب التاب ──
   const activeConvs = convType === "product" ? productConvs : serviceConvs
 
-  // ── فلترة حسب stage + بحث ──
   const filtered = useMemo(() => {
     let result = activeConvs
     if (filter !== "all") result = result.filter(c => c.stage === filter)
@@ -407,7 +385,6 @@ function ConversationsContent() {
 
   const unreadCount = conversations.filter(c => !c.isRead).length
 
-  // ── عداد كل فلتر ──
   const filterButtons = useMemo(() =>
     STAGE_FILTERS[convType].map(f => ({
       ...f,
@@ -417,7 +394,6 @@ function ConversationsContent() {
     }))
   , [activeConvs, convType])
 
-  // ── Stats حسب التاب ──
   const stats = useMemo(() => ({
     total:     activeConvs.length,
     closed:    activeConvs.filter(c => c.stage === "CLOSED").length,
@@ -443,7 +419,7 @@ function ConversationsContent() {
     </div>
   )
 
-  /* ── Mobile full-screen detail ── */
+  /* Mobile full-screen detail */
   if (selected) {
     return (
       <>
@@ -497,8 +473,8 @@ function ConversationsContent() {
           <div className="grid grid-cols-3 gap-2 px-3 py-3 border-t border-border shrink-0"
             style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
             {[
-              { label: t('conv.messages'),   value: `${messages.length}` },
-              { label: t('conv.duration'),   value: timeAgo(selected.createdAt) },
+              { label: t('conv.messages'),  value: `${messages.length}` },
+              { label: t('conv.duration'),  value: timeAgo(selected.createdAt) },
               { label: t('conv.order_val'), value: selected.totalAmount ? `${selected.totalAmount}` : "—" },
             ].map(item => (
               <div key={item.label} className="bg-secondary/50 border border-border rounded-lg p-2 text-center">
@@ -549,6 +525,9 @@ function MainLayout({
   deleteModal, confirmDelete, cancelDelete,
 }) {
   const { t } = useLanguage()
+  // ✅ FIX: تعريف getStageLabel هنا لأن MainLayout تستخدمه في الـ map
+  const getStageLabel = useStageLabel()
+
   return (
     <div className="flex flex-col gap-5 pb-6">
 
@@ -570,18 +549,8 @@ function MainLayout({
       {/* ══ تاب منتجات / خدمات ══ */}
       <div className="flex gap-1 p-1 bg-secondary/50 border border-border rounded-2xl w-fit">
         {[
-          {
-            key: "product",
-            labelKey: "nav.products",
-            icon: ShoppingBag,
-            count: productCount,
-          },
-          {
-            key: "service",
-            labelKey: "nav.services",
-            icon: Wrench,
-            count: serviceCount,
-          },
+          { key: "product", labelKey: "nav.products", icon: ShoppingBag, count: productCount },
+          { key: "service", labelKey: "nav.services", icon: Wrench,      count: serviceCount },
         ].map(tab => {
           const Icon = tab.icon
           const active = convType === tab.key
@@ -598,9 +567,7 @@ function MainLayout({
               {t(tab.labelKey)}
               <span className={cn(
                 "text-[12px] px-1.5 py-0.5 rounded-full font-bold tabular-nums",
-                active
-                  ? "bg-brand-600 text-white"
-                  : "bg-border/80 text-muted-foreground"
+                active ? "bg-brand-600 text-white" : "bg-border/80 text-muted-foreground"
               )}>
                 {tab.count}
               </span>
@@ -609,7 +576,7 @@ function MainLayout({
         })}
       </div>
 
-      {/* ── Stats 4 كاردات حسب التاب ── */}
+      {/* ── Stats 4 كاردات ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           label={convType === "product" ? t('conv.total_product') : t('conv.total_service')}
@@ -640,9 +607,7 @@ function MainLayout({
               {t(f.labelKey)}
               <span className={cn(
                 "text-[11px] font-bold px-1.5 py-0.5 rounded-md tabular-nums",
-                filter === f.key
-                  ? "bg-white/20 text-white"
-                  : "bg-border/80 text-muted-foreground"
+                filter === f.key ? "bg-white/20 text-white" : "bg-border/80 text-muted-foreground"
               )}>
                 {f.count}
               </span>
@@ -678,14 +643,18 @@ function MainLayout({
           ) : (
             filtered.map((conv, idx) => {
               const safeScore = typeof conv.score === "number" && !isNaN(conv.score)
-                ? conv.score
-                : 0
-              const stageLabel = getStageLabel(conv.stage, conv.type)
+                ? conv.score : 0
+              // ✅ getStageLabel متاح الآن لأننا عرّفناه أعلى في MainLayout
+              const stageLabel    = getStageLabel(conv.stage, conv.type)
               const stageClassName = getStageClassName(conv.stage, conv.type)
-              const stage = getStageConfig(conv.stage)
-              const scoreColor = getScoreColor(safeScore)
+              const stage         = getStageConfig(conv.stage)
+              const scoreColor    = getScoreColor(safeScore)
               return (
-                <ConvCard key={conv.id} conv={conv} stage={stage} scoreColor={scoreColor}
+                <ConvCard
+                  key={conv.id}
+                  conv={conv}
+                  stage={stage}
+                  scoreColor={scoreColor}
                   stageLabel={stageLabel}
                   stageClassName={stageClassName}
                   isSelected={selected?.id === conv.id}
@@ -731,7 +700,7 @@ function MainLayout({
           <div className="absolute inset-0 bg-black/50" onClick={cancelDelete} />
           <div
             className="relative w-full max-w-sm border border-border rounded-2xl shadow-2xl overflow-hidden"
-            style={{ animation: "slideUp 0.3s ease-out forwards", backgroundColor: "var(--modal-surface, hsl(var(--card)))" }}
+            style={{ backgroundColor: "var(--modal-surface, hsl(var(--card)))" }}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-red-500/5">
               <div className="flex items-center gap-2">
@@ -773,9 +742,9 @@ function MainLayout({
 }
 
 /* ─────────────── Conv Card ─────────────── */
-function ConvCard({ conv, stageClassName, scoreColor, isSelected, onSelect, onDelete, delay, convType, safeScore }) {
+// ✅ يستقبل stageLabel كـ prop من MainLayout — لا يستدعي useStageLabel مرة ثانية
+function ConvCard({ conv, stageLabel, stageClassName, scoreColor, isSelected, onSelect, onDelete, delay, convType, safeScore }) {
   const { t } = useLanguage()
-  const getStageLabel = useStageLabel()
   const [visible, setVisible] = useState(false)
   useEffect(() => {
     const timer = setTimeout(() => setVisible(true), delay)
@@ -814,7 +783,6 @@ function ConvCard({ conv, stageClassName, scoreColor, isSelected, onSelect, onDe
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Badge نوع المحادثة */}
           <span className={cn(
             "text-[11px] px-1.5 py-0.5 rounded-md border font-semibold shrink-0",
             convType === "product"
@@ -823,7 +791,7 @@ function ConvCard({ conv, stageClassName, scoreColor, isSelected, onSelect, onDe
           )}>
             {convType === "product" ? `${t('nav.products')} 🛍️` : `${t('nav.services')} 🔧`}
           </span>
-          <span className="text-[12px] text-muted-foreground">{timeAgo(conv.updatedAt)}</span>
+          <span className="text-[12px] text-muted-foreground">{timeAgo(conv.updatedAt, t)}</span>
         </div>
       </div>
 
@@ -832,8 +800,9 @@ function ConvCard({ conv, stageClassName, scoreColor, isSelected, onSelect, onDe
       </p>
 
       <div className="flex items-center justify-between">
+        {/* ✅ stageLabel جاهز من الـ prop */}
         <span className={cn("text-[12px] font-semibold px-2 py-0.5 rounded-md border", stageClassName)}>
-          {getStageLabel(conv.stage, conv.type)}
+          {stageLabel}
         </span>
         <div className="flex items-center gap-2">
           <ScoreBar score={safeScore} color={scoreColor} />
@@ -852,10 +821,10 @@ function ConvCard({ conv, stageClassName, scoreColor, isSelected, onSelect, onDe
 /* ─────────────── Detail Panel ─────────────── */
 function DetailPanel({ selected, messages, messagesLoading, convType }) {
   const { t } = useLanguage()
+  // ✅ useStageLabel مستدعى على مستوى الـ component مباشرة — Rules of Hooks
   const getStageLabel = useStageLabel()
-  const scoreColor = getScoreColor(selected.score)
+  const scoreColor     = getScoreColor(selected.score)
   const stageClassName = getStageClassName(selected.stage, selected.type)
-  const stage = getStageConfig(selected.stage)
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden transition-shadow duration-300 hover:shadow-lg h-full flex flex-col">
@@ -913,7 +882,7 @@ function DetailPanel({ selected, messages, messagesLoading, convType }) {
         <div className="grid grid-cols-3 gap-2.5">
           {[
             { label: t('conv.messages'), value: `${messages.length}` },
-            { label: t('conv.duration'), value: timeAgo(selected.createdAt) },
+            { label: t('conv.duration'), value: timeAgo(selected.createdAt, t) },
             {
               label: convType === "product" ? t('conv.order_val') : t('conv.booking_val'),
               value: selected.totalAmount ? `${selected.totalAmount}` : "—"

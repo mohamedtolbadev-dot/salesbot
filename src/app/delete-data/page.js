@@ -13,7 +13,7 @@ export default function DeleteDataPage() {
             <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center">
               <MessageCircle size={16} className="text-white" />
             </div>
-            <span className="font-bold text-foreground">SalesBot.ma</span>
+            <span className="font-bold text-foreground">Wakil.ma</span>
           </div>
           <Link 
             href="/"
@@ -33,7 +33,7 @@ export default function DeleteDataPage() {
           </div>
           <h1 className="text-2xl font-bold text-foreground mb-2">حذف البيانات</h1>
           <p className="text-sm text-muted-foreground">
-            كيفية حذف بياناتك من SalesBot.ma
+            كيفية حذف بياناتك من wakil.ma
           </p>
         </div>
 
@@ -100,10 +100,10 @@ export default function DeleteDataPage() {
             <div className="bg-secondary rounded-lg p-4 mb-4">
               <p className="text-sm text-foreground mb-2">أرسل بريدًا إلى:</p>
               <a 
-                href="mailto:coprino7@gmail.com?subject=طلب حذف البيانات&body=مرحباً، أريد حذف جميع بياناتي من SalesBot.ma.%0D%0A%0D%0AEmail المستخدم: [أدخل إيميلك]%0D%0Aرقم الهاتف: [أدخل رقمك]"
+                href="mailto:contct@wakil.ma?subject=طلب حذف البيانات&body=مرحباً، أريد حذف جميع بياناتي من Wakil.%0D%0A%0D%0AEmail المستخدم: [أدخل إيميلك]%0D%0Aرقم الهاتف: [أدخل رقمك]"
                 className="text-brand-600 font-semibold hover:underline"
               >
-                coprino7@gmail.com
+                contct@wakil.ma
               </a>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -206,11 +206,11 @@ export default function DeleteDataPage() {
               إذا كان لديك أي سؤال حول حذف بياناتك:
             </p>
             <a 
-              href="mailto:coprino7@gmail.com"
+              href="mailto:contct@wakil.ma"
               className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg text-sm transition-colors"
             >
               <Mail size={16} />
-              coprino7@gmail.com
+              contct@wakil.ma
             </a>
           </section>
         </div>
@@ -218,7 +218,7 @@ export default function DeleteDataPage() {
         {/* Footer */}
         <footer className="mt-12 pt-8 border-t border-border text-center">
           <p className="text-xs text-muted-foreground">
-            © 2025 SalesBot.ma - جميع الحقوق محفوظة
+            © 2025 wakil.ma - جميع الحقوق محفوظة
           </p>
         </footer>
       </main>

@@ -12,8 +12,8 @@ export function Logo({ href = "/" }) {
   return (
     <Link href={href} dir="ltr" className="flex items-center">
       <Image
-        src={isDark ? "/logo/logo-dark.svg" : "/logo/logo-light.svg"}
-        alt="SalesBot.ma"
+        src={isDark ? "/logo/wakil-logo-dark.svg" : "/logo/wakil-logo-light.svg"}
+        alt="wakil.ma"
         width={168}
         height={38}
         className="h-7 w-auto sm:h-8 md:h-9"

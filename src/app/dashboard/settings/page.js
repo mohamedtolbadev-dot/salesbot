@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { useAgentStore } from "@/store/agentStore"
 import { productsAPI, servicesAPI } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { Loader2, Package, Clock, Store, Eye, EyeOff, Sparkles, Zap, Heart, Crown, Flame, Wrench, Maximize2, XCircle } from "lucide-react"
+import { Loader2, Package, Clock, Store, Eye, EyeOff, Sparkles, Zap, Heart, Crown, Flame, Wrench, Maximize2, XCircle, Truck } from "lucide-react"
 import {
   Bot, Save, Plus, Trash2, MessageCircle,
   Settings, Shield, Bell, Phone, CalendarCheck,
@@ -652,7 +652,7 @@ function SettingsSkeleton({ activeTab = "agent" }) {
 // ── Main Page ───────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const { t, language: uiLang } = useLanguage()
+  const { t, language: uiLang, isRTL } = useLanguage()
   const [activeTab, setActiveTab] = useState("agent")
   const [saving, setSaving] = useState(false)
   const [newObjection, setNewObjection] = useState(null)
@@ -685,6 +685,7 @@ export default function SettingsPage() {
   const [orderShipMessage, setOrderShipMessage] = useState("")
   const [orderDeliverMessage, setOrderDeliverMessage] = useState("")
   const [orderCancelledMessage, setOrderCancelledMessage] = useState("")
+  const [trackingUrlTemplate, setTrackingUrlTemplate] = useState("")
   const [whatsappForm, setWhatsappForm] = useState({ whatsappPhoneId: "", whatsappToken: "" })
   const [showToken, setShowToken] = useState(false)
   const [products, setProducts] = useState([])
@@ -776,6 +777,7 @@ export default function SettingsPage() {
       setOrderShipMessage(agent.orderShipMessage || "")
       setOrderDeliverMessage(agent.orderDeliverMessage || "")
       setOrderCancelledMessage(agent.orderCancelledMessage || "")
+      setTrackingUrlTemplate(agent.trackingUrlTemplate || "")
       setWhatsappForm({ whatsappPhoneId: agent.whatsappPhoneId || "", whatsappToken: agent.whatsappToken || "" })
     }
   }, [agent])
@@ -789,6 +791,7 @@ export default function SettingsPage() {
         appointmentConfirmMessage, appointmentReminderMessage,
         appointmentCancellationMessage,
         orderConfirmMessage, orderShipMessage, orderDeliverMessage, orderCancelledMessage,
+        trackingUrlTemplate,
       })
       showToast(t('settings.toast_saved'))
     } catch (err) { console.error(err) } finally { setSaving(false) }
@@ -917,7 +920,7 @@ export default function SettingsPage() {
   const isWAConnected = !!(whatsappForm.whatsappPhoneId && whatsappForm.whatsappToken)
 
   // Webhook URL from environment
-  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://salesbot-rho.vercel.app"
+  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://wakil.vercel.app"
   const webhookUrl = `${APP_URL}/api/webhook/whatsapp`
 
   return (
@@ -1127,7 +1130,7 @@ export default function SettingsPage() {
                       hint: t('settings.instructions_hint'),
                       onSave: (val) => setLocalAgent({ ...localAgent, instructions: val })
                     }); setModalOpen(true); }}
-                    className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                    className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
                     title={t('settings.expand')}
                   >
                     <Maximize2 size={16} />
@@ -1142,6 +1145,18 @@ export default function SettingsPage() {
           {mode !== "service" && (
             <Section title={t('settings.order_messages')}>
               <div className="flex flex-col gap-4">
+                {/* رابط التتبع من شركة التوصيل */}
+                <Field label={t('settings.tracking_url_template') || "رابط التتبع من شركة التوصيل"} icon={Truck}
+                  hint={t('settings.tracking_url_hint') || "مثال: https://tracking.company.com/?code={tracking} - استخدم {tracking} لرقم التتبع"}>
+                  <input
+                    type="url"
+                    value={trackingUrlTemplate}
+                    onChange={(e) => setTrackingUrlTemplate(e.target.value)}
+                    placeholder="https://tracking.company.com/?code={tracking}"
+                    className={inputCls}
+                  />
+                </Field>
+
                 <Field label={t('settings.order_confirm_msg')} icon={CalendarCheck}
                   hint={t('settings.order_confirm_hint')}>
                   <div className="relative">
@@ -1157,7 +1172,7 @@ export default function SettingsPage() {
                         hint: t('settings.order_confirm_hint'),
                         onSave: (val) => setOrderConfirmMessage(val)
                       }); setModalOpen(true); }}
-                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
                       title={t('settings.expand')}
                     >
                       <Maximize2 size={16} />
@@ -1166,7 +1181,7 @@ export default function SettingsPage() {
                 </Field>
 
                 <Field label={t('settings.order_ship_msg')} icon={Bell}
-                  hint={t('settings.order_ship_hint')}>
+                  hint={(t('settings.order_ship_hint') || "") + " — المتغيرات: {name}, {product}, {amount}, {tracking}, {trackingUrl}"}>
                   <div className="relative">
                     <textarea value={orderShipMessage} rows={3}
                       onChange={(e) => setOrderShipMessage(e.target.value)}
@@ -1177,10 +1192,10 @@ export default function SettingsPage() {
                         title: t('settings.order_ship_msg'),
                         value: orderShipMessage,
                         placeholder: orderPh.ship,
-                        hint: t('settings.order_ship_hint'),
+                        hint: (t('settings.order_ship_hint') || "") + " — المتغيرات: {name}, {product}, {amount}, {tracking}, {trackingUrl}",
                         onSave: (val) => setOrderShipMessage(val)
                       }); setModalOpen(true); }}
-                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
                       title={t('settings.expand')}
                     >
                       <Maximize2 size={16} />
@@ -1203,7 +1218,7 @@ export default function SettingsPage() {
                         hint: t('settings.order_deliver_hint'),
                         onSave: (val) => setOrderDeliverMessage(val)
                       }); setModalOpen(true); }}
-                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
                       title={t('settings.expand')}
                     >
                       <Maximize2 size={16} />
@@ -1226,7 +1241,7 @@ export default function SettingsPage() {
                         hint: t('settings.order_cancelled_hint'),
                         onSave: (val) => setOrderCancelledMessage(val)
                       }); setModalOpen(true); }}
-                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
                       title={t('settings.expand')}
                     >
                       <Maximize2 size={16} />
@@ -1256,7 +1271,7 @@ export default function SettingsPage() {
                         hint: t('settings.appt_confirm_hint'),
                         onSave: (val) => setAppointmentConfirmMessage(val)
                       }); setModalOpen(true); }}
-                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
                       title={t('settings.expand')}
                     >
                       <Maximize2 size={16} />
@@ -1279,7 +1294,7 @@ export default function SettingsPage() {
                         hint: t('settings.appt_reminder_hint'),
                         onSave: (val) => setAppointmentReminderMessage(val)
                       }); setModalOpen(true); }}
-                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
                       title={t('settings.expand')}
                     >
                       <Maximize2 size={16} />
@@ -1302,7 +1317,7 @@ export default function SettingsPage() {
                         hint: t('settings.appt_cancel_hint'),
                         onSave: (val) => setAppointmentCancellationMessage(val)
                       }); setModalOpen(true); }}
-                      className="absolute left-3 top-3 text-muted-foreground hover:text-brand-600 transition-colors"
+                      className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
                       title={t('settings.expand')}
                     >
                       <Maximize2 size={16} />

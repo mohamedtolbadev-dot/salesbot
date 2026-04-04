@@ -205,10 +205,10 @@ export function MobileNav() {
         >
           <div className="flex items-center gap-3 p-3 rounded-xl bg-black/5 dark:bg-white/10">
             <div className="w-10 h-10 rounded-full bg-brand-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-              SB
+              W
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">SalesBot.ma</p>
+              <p className="text-sm font-semibold text-foreground">Wakil.ma</p>
               <p className="text-xs text-muted-foreground">{t('plan.pro')}</p>
             </div>
           </div>
@@ -332,10 +332,10 @@ export function Sidebar() {
       <div className="p-3 border-t border-border/50 shrink-0">
         <div className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-secondary/70 transition-all duration-200 cursor-pointer border border-transparent hover:border-border/30">
           <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-sm">
-            SB
+            W
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-foreground truncate">SalesBot.ma</p>
+            <p className="text-xs font-semibold text-foreground truncate">Wakil.ma</p>
             <p className="text-[11px] text-muted-foreground mt-0.5">{t('plan.pro')}</p>
           </div>
         </div>
