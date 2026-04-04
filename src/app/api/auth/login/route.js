@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { comparePassword, generateToken } from "@/lib/auth"
 import { successResponse, errorResponse } from "@/lib/response"
 import { rateLimit } from "@/lib/rateLimit"
+import { validators, ValidationError } from "@/lib/validation"
 
 export async function POST(request) {
   try {
@@ -12,11 +13,24 @@ export async function POST(request) {
     }
 
     const raw = await request.json()
-    const email = raw.email?.trim().toLowerCase()
-    const password = raw.password
 
-    if (!email || !password) {
-      return errorResponse("الإيميل وكلمة المرور مطلوبان")
+    // ✅ Validation على email و password
+    let email, password
+    try {
+      email = validators.email(raw.email)
+      password = raw.password
+      if (!password || typeof password !== 'string') {
+        return errorResponse("كلمة المرور مطلوبة", 400)
+      }
+      // منع bcrypt DoS
+      if (password.length > 128) {
+        return errorResponse("كلمة المرور طويلة جداً", 400)
+      }
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        return errorResponse(err.message, 400)
+      }
+      throw err
     }
 
     // البحث عن المستخدم
@@ -55,6 +69,13 @@ export async function POST(request) {
     })
   } catch (error) {
     console.error("Login error:", error)
-    return errorResponse("خطأ في تسجيل الدخول", 500)
+    // رسائل مختلفة حسب نوع الخطأ
+    if (error.code === "P2021") {
+      return errorResponse("قاعدة البيانات غير متوفرة", 503)
+    }
+    if (error.code === "ECONNREFUSED") {
+      return errorResponse("مشكلة في الاتصال بالسيرفر", 503)
+    }
+    return errorResponse("حدث خطأ غير متوقع", 500)
   }
 }

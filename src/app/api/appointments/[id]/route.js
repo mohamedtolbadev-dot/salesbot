@@ -1,24 +1,19 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { verifyToken } from "@/lib/auth"
+import { getUserFromRequest } from "@/lib/auth"
 
 // GET /api/appointments/[id] - Get single appointment
 export async function GET(request, { params }) {
   try {
-    const token = request.headers.get("authorization")?.split(" ")[1]
-    if (!token) {
+    const user = await getUserFromRequest(request)
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
     const { id } = await params
 
     const appointment = await prisma.appointment.findFirst({
-      where: { id, userId: decoded.userId },
+      where: { id, userId: user.id },
       include: {
         service: { select: { name: true, price: true, duration: true } },
         customer: { select: { name: true, phone: true } },
@@ -51,14 +46,9 @@ export async function GET(request, { params }) {
 // PUT /api/appointments/[id] - Update appointment
 export async function PUT(request, { params }) {
   try {
-    const token = request.headers.get("authorization")?.split(" ")[1]
-    if (!token) {
+    const user = await getUserFromRequest(request)
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
     const { id } = await params
@@ -67,7 +57,7 @@ export async function PUT(request, { params }) {
 
     // Check if appointment exists and belongs to user
     const existing = await prisma.appointment.findFirst({
-      where: { id, userId: decoded.userId },
+      where: { id, userId: user.id },
     })
 
     if (!existing) {
@@ -100,7 +90,7 @@ export async function PUT(request, { params }) {
     if (notes !== undefined) updateData.notes = notes
 
     const appointment = await prisma.appointment.update({
-      where: { id },
+      where: { id, userId: user.id },
       data: updateData,
     })
 
@@ -114,28 +104,23 @@ export async function PUT(request, { params }) {
 // DELETE /api/appointments/[id] - Delete appointment
 export async function DELETE(request, { params }) {
   try {
-    const token = request.headers.get("authorization")?.split(" ")[1]
-    if (!token) {
+    const user = await getUserFromRequest(request)
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
     const { id } = await params
 
     // Check if appointment exists and belongs to user
     const existing = await prisma.appointment.findFirst({
-      where: { id, userId: decoded.userId },
+      where: { id, userId: user.id },
     })
 
     if (!existing) {
       return NextResponse.json({ error: "Appointment not found" }, { status: 404 })
     }
 
-    await prisma.appointment.delete({ where: { id } })
+    await prisma.appointment.delete({ where: { id, userId: user.id } })
 
     return NextResponse.json({ success: true, message: "Appointment deleted successfully" })
   } catch (error) {

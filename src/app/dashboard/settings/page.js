@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useAgentStore } from "@/store/agentStore"
 import { productsAPI, servicesAPI } from "@/lib/api"
+import { getToken } from "@/lib/helpers"
 import { cn } from "@/lib/utils"
 import { Loader2, Package, Clock, Store, Eye, EyeOff, Sparkles, Zap, Heart, Crown, Flame, Wrench, Maximize2, XCircle, Truck } from "lucide-react"
 import {
@@ -728,7 +729,7 @@ export default function SettingsPage() {
 
   async function fetchUser() {
     try {
-      const token = localStorage.getItem('token')
+      const token = getToken()
       if (!token) return
       const response = await fetch('/api/auth/me', {
         headers: { 'Authorization': `Bearer ${token}` }, credentials: 'same-origin'
@@ -744,9 +745,10 @@ export default function SettingsPage() {
   async function handleSaveAccount() {
     try {
       setAccountLoading(true)
+      const token = getToken()
       const response = await fetch('/api/auth/update-profile', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(accountForm)
       })
       const data = await response.json()
@@ -814,7 +816,7 @@ export default function SettingsPage() {
   async function handleDeleteAccount() {
     try {
       setDeleteLoading(true)
-      const token = localStorage.getItem('token')
+      const token = getToken()
       const response = await fetch('/api/auth/delete-account', {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }

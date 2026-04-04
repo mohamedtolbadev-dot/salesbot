@@ -169,3 +169,26 @@ export function translateObjectionReason(reason, t) {
   // Return original if no translation found
   return reason
 }
+
+// ✅ دالة تنظيف المدخلات — تمنع Prompt Injection
+export function sanitizeInput(text) {
+  if (!text || typeof text !== "string") return ""
+  return text
+    .replace(/[<>]/g, "")
+    .replace(/\[STAGE:\w+\]/g, "")
+    .replace(/\[ORDER_CONFIRMED\]/g, "")
+    .replace(/\[BOOKING_CONFIRMED\]/g, "")
+    .replace(/\[SEND_IMAGES\]/g, "")
+    .slice(0, 1000)
+    .trim()
+}
+
+// ✅ دالة آمنة لجلب token — تدعم SSR
+export function getToken() {
+  if (typeof window === "undefined") return null
+  try {
+    return localStorage.getItem("token")
+  } catch {
+    return null
+  }
+}

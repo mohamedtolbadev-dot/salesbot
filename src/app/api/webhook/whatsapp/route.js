@@ -6,6 +6,7 @@ import {
   sendWhatsAppMessage
 } from "@/lib/whatsapp"
 import { processIncomingMessage } from "@/lib/aiAgent"
+import { sanitizeInput } from "@/lib/helpers"
 import crypto from "crypto"
 
 // Verify Meta webhook signature
@@ -174,11 +175,19 @@ export async function POST(request) {
 
         // ✅ معالجة الرسالة + توليد رد AI
         console.log(`🤖 [${incoming.from}] Calling processIncomingMessage...`)
+        
+        // ✅ تنظيف الرسالة — منع Prompt Injection
+        const sanitizedText = sanitizeInput(incoming.text)
+        if (!sanitizedText) {
+          console.log(`⏭️ [${incoming.from}] رسالة فارغة بعد التنظيف`)
+          return
+        }
+        
         const result = await processIncomingMessage({
           userId: agent.userId,
           customerPhone: incoming.from,
           customerName: incoming.customerName,
-          messageText: incoming.text,
+          messageText: sanitizedText,
         })
         console.log(`🤖 [${incoming.from}] processIncomingMessage result:`, { skipped: result?.skipped, hasReply: !!result?.reply, replyLength: result?.reply?.length })
 

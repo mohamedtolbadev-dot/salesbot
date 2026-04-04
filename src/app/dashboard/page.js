@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useMemo } from "react"
+import React, { useState, useEffect, useRef, useMemo, memo } from "react"
 import { useRouter } from "next/navigation"
 import { statsAPI, conversationsAPI, agentAPI } from "@/lib/api"
 import { getStageConfig, getStageLabel, getStageClassName, getScoreColor, getInitials } from "@/lib/helpers"
@@ -202,7 +202,7 @@ const globalStyles = `
 `;
 
 /* ─────────────── Animated Counter ─────────────── */
-function AnimatedNumber({ value, suffix = "" }) {
+const AnimatedNumber = memo(function AnimatedNumber({ value, suffix = "" }) {
   const [display, setDisplay] = useState(0)
   const raf = useRef(null)
   useEffect(() => {
@@ -220,7 +220,7 @@ function AnimatedNumber({ value, suffix = "" }) {
     return () => cancelAnimationFrame(raf.current)
   }, [value])
   return <>{display.toLocaleString()}{suffix}</>
-}
+})
 
 /* ─────────────── Score Bar ─────────────── */
 function ScoreBar({ score, color }) {
@@ -777,6 +777,7 @@ export default function DashboardPage() {
 
   // ✅ فلترة ديناميكية بدون API call
   const filteredConversations = useMemo(() => {
+    if (!Array.isArray(conversations)) return []
     if (convFilter === "all") return conversations
     if (convFilter === "product") return conversations.filter(c => c.type === "product" || !c.type)
     if (convFilter === "service") return conversations.filter(c => c.type === "service")

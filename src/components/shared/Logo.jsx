@@ -17,6 +17,8 @@ export function Logo({ href = "/" }) {
         width={168}
         height={38}
         className="h-7 w-auto sm:h-8 md:h-9"
+        priority
+        loading="eager"
       />
     </Link>
   )

@@ -1,20 +1,15 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { verifyToken } from "@/lib/auth"
+import { getUserFromRequest } from "@/lib/auth"
 import { generateStatusUpdateMessage } from "@/lib/aiAgent"
 import { sendWhatsAppMessage } from "@/lib/whatsapp"
 
 // GET /api/appointments - Get all appointments for the user
 export async function GET(request) {
   try {
-    const token = request.headers.get("authorization")?.split(" ")[1]
-    if (!token) {
+    const user = await getUserFromRequest(request)
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -22,7 +17,7 @@ export async function GET(request) {
     const from = searchParams.get("from")
     const to = searchParams.get("to")
 
-    const where = { userId: decoded.userId }
+    const where = { userId: user.id }
     if (status) where.status = status
     if (from || to) {
       where.date = {}
@@ -71,14 +66,9 @@ export async function GET(request) {
 // POST /api/appointments - Create new appointment
 export async function POST(request) {
   try {
-    const token = request.headers.get("authorization")?.split(" ")[1]
-    if (!token) {
+    const user = await getUserFromRequest(request)
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
     }
 
     const body = await request.json()
@@ -111,7 +101,7 @@ export async function POST(request) {
 
     const appointment = await prisma.appointment.create({
       data: {
-        userId: decoded.userId,
+        userId: user.id,
         customerId,
         customerName,
         customerPhone,
@@ -127,7 +117,7 @@ export async function POST(request) {
 
     // إرسال رسالة واتساب عند إنشاء الموعد (PENDING)
     try {
-      const agent = await prisma.agent.findUnique({ where: { userId: decoded.userId } })
+      const agent = await prisma.agent.findUnique({ where: { userId: user.id } })
       if (agent?.whatsappPhoneId && agent?.whatsappToken && customerPhone) {
         const { message } = await generateStatusUpdateMessage({
           agent,

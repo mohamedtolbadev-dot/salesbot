@@ -1,24 +1,16 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { verifyToken } from "@/lib/auth"
+import { getUserFromRequest } from "@/lib/auth"
 import { generateStatusUpdateMessage } from "@/lib/aiAgent"
 import { sendWhatsAppMessage } from "@/lib/whatsapp"
 
 // PATCH /api/appointments/[id]/status
 export async function PATCH(request, { params }) {
   try {
-    const token = request.headers
-      .get("authorization")?.split(" ")[1]
-    if (!token) {
+    const user = await getUserFromRequest(request)
+    if (!user) {
       return NextResponse.json(
         { error: "Unauthorized" }, { status: 401 }
-      )
-    }
-
-    const decoded = verifyToken(token)
-    if (!decoded) {
-      return NextResponse.json(
-        { error: "Invalid token" }, { status: 401 }
       )
     }
 
@@ -42,7 +34,7 @@ export async function PATCH(request, { params }) {
 
     // التحقق من وجود الموعد وجلب معلومات الزبون
     const existing = await prisma.appointment.findFirst({
-      where: { id, userId: decoded.userId },
+      where: { id, userId: user.id },
       include: {
         customer: true,
       },
@@ -57,7 +49,7 @@ export async function PATCH(request, { params }) {
 
     // تحديث الحالة
     const updated = await prisma.appointment.update({
-      where: { id },
+      where: { id, userId: user.id },
       data: {
         status,
         ...(status === "CONFIRMED" && { confirmationSent: true }),
@@ -73,7 +65,7 @@ export async function PATCH(request, { params }) {
       try {
         // جلب إعدادات الـ Agent
         const agent = await prisma.agent.findUnique({
-          where: { userId: decoded.userId },
+          where: { userId: user.id },
         })
 
         if (agent?.whatsappPhoneId && agent?.whatsappToken) {
@@ -114,7 +106,7 @@ export async function PATCH(request, { params }) {
             console.error(`❌ Failed to send AI message:`, result.error)
           }
         } else {
-          console.log(`⚠️ WhatsApp not connected for user ${decoded.userId}`)
+          console.log(`⚠️ WhatsApp not connected for user ${user.id}`)
         }
       } catch (msgError) {
         console.error(`❌ Error sending AI message:`, msgError)

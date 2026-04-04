@@ -291,6 +291,7 @@ function ConversationsContent() {
   const [selected, setSelected]                 = useState(null)
   const [messages, setMessages]                 = useState([])
   const [messagesLoading, setMessagesLoading]   = useState(false)
+  const [messagesError, setMessagesError]       = useState(null)
   const [deleteModal, setDeleteModal]           = useState({ open: false, id: null, name: "" })
 
   const handleTypeChange = useCallback((type) => {
@@ -350,13 +351,17 @@ function ConversationsContent() {
   }, [conversations, searchParams])
 
   useEffect(() => {
-    if (!selected?.id) { setMessages([]); return }
+    if (!selected?.id) { setMessages([]); setMessagesError(null); return }
     ;(async () => {
       try {
-        setMessagesLoading(true); setMessages([])
+        setMessagesLoading(true); setMessagesError(null); setMessages([])
         const res = await conversationsAPI.getById(selected.id)
         setMessages(res.data?.messages || [])
-      } catch { setMessages([]) }
+      } catch (err) { 
+        setMessages([]) 
+        setMessagesError("فشل في تحميل الرسائل")
+        console.error("Fetch messages error:", err)
+      }
       finally { setMessagesLoading(false) }
     })()
   }, [selected?.id])
@@ -456,7 +461,17 @@ function ConversationsContent() {
             </span>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
-            {messagesLoading
+            {messagesError ? (
+              <div className="flex flex-col items-center justify-center flex-1 gap-2">
+                <AlertCircle size={20} className="text-red-500" />
+                <p className="text-xs text-muted-foreground">{messagesError}</p>
+                <button
+                  onClick={() => setSelected({ ...selected })}
+                  className="text-xs text-brand-600 hover:text-brand-800 transition-colors">
+                  إعادة المحاولة
+                </button>
+              </div>
+            ) : messagesLoading
               ? <div className="flex items-center justify-center flex-1">
                   <Loader2 size={22} className="animate-spin text-brand-600" />
                 </div>
@@ -491,7 +506,8 @@ function ConversationsContent() {
           stats={stats} filtered={filtered} filter={filter} setFilter={setFilter}
           search={search} setSearch={setSearch} filterButtons={filterButtons}
           selected={selected} setSelected={setSelected}
-          messages={messages} messagesLoading={messagesLoading}
+          messages={messages} messagesLoading={messagesLoading} messagesError={messagesError}
+          onRetryMessages={() => setSelected({ ...selected })}
           unreadCount={unreadCount}
           onDeleteConversation={handleDeleteConversation}
           deleteModal={deleteModal} confirmDelete={confirmDelete} cancelDelete={cancelDelete}
@@ -507,7 +523,8 @@ function ConversationsContent() {
       stats={stats} filtered={filtered} filter={filter} setFilter={setFilter}
       search={search} setSearch={setSearch} filterButtons={filterButtons}
       selected={selected} setSelected={setSelected}
-      messages={messages} messagesLoading={messagesLoading}
+      messages={messages} messagesLoading={messagesLoading} messagesError={messagesError}
+      onRetryMessages={() => setSelected({ ...selected })}
       unreadCount={unreadCount}
       onDeleteConversation={handleDeleteConversation}
       deleteModal={deleteModal} confirmDelete={confirmDelete} cancelDelete={cancelDelete}
@@ -520,7 +537,8 @@ function MainLayout({
   convType, onTypeChange, productCount, serviceCount,
   stats, filtered, filter, setFilter,
   search, setSearch, filterButtons,
-  selected, setSelected, messages, messagesLoading,
+  selected, setSelected, messages, messagesLoading, messagesError,
+  onRetryMessages,
   unreadCount, onDeleteConversation,
   deleteModal, confirmDelete, cancelDelete,
 }) {
@@ -688,6 +706,8 @@ function MainLayout({
               selected={selected}
               messages={messages}
               messagesLoading={messagesLoading}
+              messagesError={messagesError}
+              onRetryMessages={onRetryMessages}
               convType={convType}
             />
           )}
@@ -819,7 +839,7 @@ function ConvCard({ conv, stageLabel, stageClassName, scoreColor, isSelected, on
 }
 
 /* ─────────────── Detail Panel ─────────────── */
-function DetailPanel({ selected, messages, messagesLoading, convType }) {
+function DetailPanel({ selected, messages, messagesLoading, messagesError, onRetryMessages, convType }) {
   const { t } = useLanguage()
   // ✅ useStageLabel مستدعى على مستوى الـ component مباشرة — Rules of Hooks
   const getStageLabel = useStageLabel()
@@ -858,7 +878,17 @@ function DetailPanel({ selected, messages, messagesLoading, convType }) {
 
       {/* الرسائل */}
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 min-h-0 max-h-80">
-        {messagesLoading ? (
+        {messagesError ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2">
+            <AlertCircle size={20} className="text-red-500" />
+            <p className="text-xs text-muted-foreground">{messagesError}</p>
+            <button
+              onClick={onRetryMessages}
+              className="text-xs text-brand-600 hover:text-brand-800 transition-colors">
+              إعادة المحاولة
+            </button>
+          </div>
+        ) : messagesLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 size={22} className="animate-spin text-brand-600" />
           </div>

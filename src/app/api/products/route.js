@@ -47,19 +47,27 @@ export async function POST(request) {
       return errorResponse("الاسم والسعر مطلوبان", 400)
     }
 
-    const parsedPrice = Number(price)
-    if (isNaN(parsedPrice) || parsedPrice <= 0) {
-      return errorResponse("السعر يجب أن يكون رقماً موجباً", 400)
+    const parsedPrice = parseFloat(price)
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return errorResponse("السعر غير صالح", 400)
+    }
+    if (parsedPrice > 1000000) {
+      return errorResponse("السعر مرتفع جداً", 400)
+    }
+
+    const parsedStock = stock !== undefined ? parseFloat(stock) : 0
+    if (isNaN(parsedStock) || parsedStock < 0) {
+      return errorResponse("الكمية غير صالحة", 400)
     }
 
     const product = await prisma.product.create({
       data: {
         userId: user.id,
         name,
-        price: Number(price),
+        price: parsedPrice,
         description: description || "",
         images: images ? JSON.stringify(images) : null,
-        stock: stock !== undefined ? Number(stock) : 0,
+        stock: parsedStock,
       }
     })
 

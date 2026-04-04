@@ -42,11 +42,23 @@ export async function PUT(request, { params }) {
       where: { id },
       data: {
         ...(name !== undefined && { name }),
-        ...(price !== undefined && { price: isNaN(Number(price)) ? 0 : Number(price) }),
+        ...(price !== undefined && {
+          price: (() => {
+            const parsed = parseFloat(price)
+            if (isNaN(parsed) || parsed < 0 || parsed > 1000000) return product.price
+            return parsed
+          })()
+        }),
         ...(description !== undefined && { description }),
         ...(isActive !== undefined && { isActive }),
         ...(images !== undefined && { images: JSON.stringify(images) }),
-        ...(stock !== undefined && { stock: Number(stock) }),
+        ...(stock !== undefined && {
+          stock: (() => {
+            const parsed = parseFloat(stock)
+            if (isNaN(parsed) || parsed < 0) return product.stock
+            return parsed
+          })()
+        }),
       }
     })
 
