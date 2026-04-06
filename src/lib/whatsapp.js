@@ -103,6 +103,78 @@ export async function sendWhatsAppMessage({
   }
 }
 
+// ✅ إرسال OTP عبر Template Message (يعمل مع أي رقم، حتى الجديدة)
+export async function sendWhatsAppOTPTemplate({ phoneId, token, to, code }) {
+  if (!phoneId || !token || !to || !code) {
+    console.error("❌ sendWhatsAppOTPTemplate: Missing parameters")
+    return { success: false, error: "Missing parameters" }
+  }
+
+  const templateName = process.env.SYSTEM_WA_OTP_TEMPLATE
+  const templateLang = process.env.SYSTEM_WA_OTP_TEMPLATE_LANG || "fr"
+
+  // ── إذا لم يُعيَّن Template → fallback لنص عادي (يعمل فقط مع أرقام نشطة) ──
+  if (!templateName) {
+    console.warn("⚠️ SYSTEM_WA_OTP_TEMPLATE not set — falling back to text message")
+    return sendWhatsAppMessage({
+      phoneId,
+      token,
+      to,
+      message:
+        `🔐 Code de vérification *wakil.ma*:\n\n` +
+        `*${code}*\n\n` +
+        `⏱ Valide 15 min\n` +
+        `Ne partagez pas ce code / لا تشارك هذا الرمز`,
+    })
+  }
+
+  try {
+    const body = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: templateLang },
+        components: [
+          {
+            type: "body",
+            parameters: [{ type: "text", text: code }],
+          },
+        ],
+      },
+    }
+
+    console.log(`📤 Sending OTP template "${templateName}" to ${to}...`)
+
+    const response = await fetch(
+      `${WHATSAPP_API_URL}/${phoneId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }
+    )
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error("❌ OTP Template error:", { status: response.status, error: data?.error?.message, details: data })
+      return { success: false, error: data }
+    }
+
+    console.log(`✅ OTP Template sent (ID: ${data.messages?.[0]?.id || "unknown"})`)
+    return { success: true, data }
+  } catch (error) {
+    console.error("❌ sendWhatsAppOTPTemplate error:", error.message)
+    return { success: false, error: error.message }
+  }
+}
+
 // إرسال رسالة مع أزرار (Quick Reply)
 export async function sendWhatsAppButtons({
   phoneId,
@@ -219,7 +291,6 @@ export function parseAllIncomingMessages(body) {
   }
 }
 
-// احتفظ بالدالة القديمة للتوافق
 export async function uploadWhatsAppMedia({
   phoneId,
   token,
@@ -228,30 +299,14 @@ export async function uploadWhatsAppMedia({
   mimeType = "application/pdf"
 }) {
   try {
-    // Create boundary for multipart
-    const boundary = `----FormBoundary${Date.now()}${Math.random().toString(36).substring(2)}`
-    
-    // Build multipart body manually for Node.js compatibility
-    const parts = []
-    
-    // messaging_product field
-    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="messaging_product"\r\n\r\nwhatsapp\r\n`)
-    
-    // type field
-    parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="type"\r\n\r\n${mimeType}\r\n`)
-    
-    // file field with buffer
-    const header = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`
-    
-    const footer = `\r\n--${boundary}--\r\n`
-    
-    // Combine all parts
-    const bodyBuffer = Buffer.concat([
-      Buffer.from(parts.join(''), 'utf-8'),
-      Buffer.from(header, 'utf-8'),
-      fileBuffer,
-      Buffer.from(footer, 'utf-8')
-    ])
+    const formData = new FormData()
+    formData.append("messaging_product", "whatsapp")
+    formData.append("type", mimeType)
+    formData.append(
+      "file",
+      new Blob([fileBuffer], { type: mimeType }),
+      filename
+    )
 
     const response = await fetch(
       `${WHATSAPP_API_URL}/${phoneId}/media`,
@@ -259,16 +314,16 @@ export async function uploadWhatsAppMedia({
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
-          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          // Content-Type is set automatically by FormData (with boundary)
         },
-        body: bodyBuffer,
+        body: formData,
       }
     )
 
     const data = await response.json()
 
     if (!response.ok) {
-      console.error("❌ WhatsApp Media Upload error:", data)
+      console.error("❌ WhatsApp Media Upload error:", JSON.stringify(data))
       return { success: false, error: data }
     }
 

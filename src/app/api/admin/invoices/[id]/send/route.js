@@ -24,6 +24,8 @@ export async function POST(request, { params }) {
     if (!decoded) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
     const { id } = await params
+    const body = await request.json().catch(() => ({}))
+    const locale = body.locale?.startsWith("ar") ? "ar" : "fr"
 
     const invoice = await prisma.invoice.findUnique({
       where: { id },
@@ -47,25 +49,41 @@ export async function POST(request, { params }) {
       )
     }
 
-    const dueDate = new Date(invoice.dueDate).toLocaleDateString("ar-MA", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    })
+    const isFr = locale === "fr"
 
-    const planLabels = { FREE: "مجاني", PRO: "احترافي", ENTERPRISE: "مؤسسي" }
+    const dueDateLocale = new Date(invoice.dueDate).toLocaleDateString(
+      isFr ? "fr-MA" : "ar-MA",
+      { day: "numeric", month: "long", year: "numeric" }
+    )
+
+    const planLabels = isFr
+      ? { FREE: "Gratuit", PRO: "Pro", ENTERPRISE: "Entreprise" }
+      : { FREE: "مجاني", PRO: "احترافي", ENTERPRISE: "مؤسسي" }
     const planLabel = planLabels[invoice.plan] || invoice.plan
 
-    // ── بناء رسالة النص ──
-    let message = `مرحبا ${invoice.client.name}! 👋\n\n`
-    message += `📄 *فاتورة رقم: ${invoice.invoiceNumber}*\n`
-    message += `🏪 المتجر: ${invoice.client.storeName}\n`
-    message += `📦 الخطة: ${planLabel}\n`
-    message += `💰 المبلغ: *${invoice.amount} درهم*\n`
-    message += `📅 تاريخ الاستحقاق: ${dueDate}\n`
-    if (invoice.notes) message += `\n📝 ملاحظات: ${invoice.notes}\n`
-    if (invoice.bankInfo) message += `\n🏦 *معلومات الدفع:*\n${invoice.bankInfo}\n`
-    message += `\nشكراً لثقتكم! 🙏`
+    // ── بناء رسالة النص حسب اللغة ──
+    let message
+    if (isFr) {
+      message  = `Bonjour ${invoice.client.name}! 👋\n\n`
+      message += `📄 *Facture N°: ${invoice.invoiceNumber}*\n`
+      message += `🏪 Boutique: ${invoice.client.storeName || "-"}\n`
+      message += `📦 Plan: ${planLabel}\n`
+      message += `💰 Montant: *${invoice.amount} DH*\n`
+      message += `📅 Échéance: ${dueDateLocale}\n`
+      if (invoice.notes)    message += `\n📝 Notes: ${invoice.notes}\n`
+      if (invoice.bankInfo) message += `\n🏦 *Informations de paiement:*\n${invoice.bankInfo}\n`
+      message += `\nMerci de votre confiance! 🙏`
+    } else {
+      message  = `مرحبا ${invoice.client.name}! 👋\n\n`
+      message += `📄 *فاتورة رقم: ${invoice.invoiceNumber}*\n`
+      message += `🏪 المتجر: ${invoice.client.storeName || "-"}\n`
+      message += `📦 الخطة: ${planLabel}\n`
+      message += `💰 المبلغ: *${invoice.amount} درهم*\n`
+      message += `📅 تاريخ الاستحقاق: ${dueDateLocale}\n`
+      if (invoice.notes)    message += `\n📝 ملاحظات: ${invoice.notes}\n`
+      if (invoice.bankInfo) message += `\n🏦 *معلومات الدفع:*\n${invoice.bankInfo}\n`
+      message += `\nشكراً لثقتكم! 🙏`
+    }
 
     // ── إرسال رسالة النص ──
     const textResult = await sendWhatsAppMessage({
@@ -88,7 +106,7 @@ export async function POST(request, { params }) {
 
     try {
       console.log("📄 Generating PDF for invoice:", invoice.invoiceNumber)
-      const pdfBuffer = await generateInvoicePDF(invoice)
+      const pdfBuffer = await generateInvoicePDF(invoice, locale)
       console.log("✅ PDF generated, size:", pdfBuffer.length, "bytes")
 
       // الخطوة 1: رفع PDF إلى WhatsApp Media
@@ -111,7 +129,7 @@ export async function POST(request, { params }) {
           phoneId: adminUser.agent.whatsappPhoneId,
           token: adminUser.agent.whatsappToken,
           to: clientPhone,
-          message: `📎 فاتورة ${invoice.invoiceNumber}`,
+          message: isFr ? `📎 Facture ${invoice.invoiceNumber}` : `📎 فاتورة ${invoice.invoiceNumber}`,
           type: "document",
           document: {
             filename: `${invoice.invoiceNumber}.pdf`,
@@ -136,6 +154,18 @@ export async function POST(request, { params }) {
     await prisma.invoice.update({
       where: { id },
       data: { whatsappSent: true },
+    })
+
+    // ── إشعار للعميل بأن الفاتورة أُرسلت عبر واتساب ──
+    const dueLabelFr2 = new Date(invoice.dueDate).toLocaleDateString("fr-MA", { month: "long", year: "numeric" })
+    const dueLabelAr2 = new Date(invoice.dueDate).toLocaleDateString("ar-MA", { month: "long", year: "numeric" })
+    await prisma.notification.create({
+      data: {
+        userId:  invoice.clientId,
+        type:    "SYSTEM",
+        title:   `fr:Facture envoyée - ${dueLabelFr2}||ar:تم إرسال فاتورتك - ${dueLabelAr2}`,
+        message: `fr:La facture N° ${invoice.invoiceNumber} de ${invoice.amount} DH a été envoyée sur votre WhatsApp. À payer avant ${dueLabelFr2}.||ar:الفاتورة رقم ${invoice.invoiceNumber} بمبلغ ${invoice.amount} درهم أُرسلت إلى واتساب الخاص بك. يرجى الأداء قبل ${dueLabelAr2}.`,
+      },
     })
 
     return NextResponse.json({

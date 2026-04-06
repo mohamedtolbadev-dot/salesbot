@@ -91,11 +91,9 @@ export default function LoginPage() {
 
       const result = await authAPI.googleLogin(response.credential)
 
-      // Save token
       localStorage.setItem("token", result.data.token)
       localStorage.setItem("user", JSON.stringify(result.data.user))
 
-      // Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
       setError(err.message || t('auth.google_error'))
@@ -118,11 +116,9 @@ export default function LoginPage() {
       
       const response = await authAPI.login(email, password)
       
-      // Save token
       localStorage.setItem("token", response.data.token)
       localStorage.setItem("user", JSON.stringify(response.data.user))
-      
-      // Redirect to dashboard
+
       router.push("/dashboard")
     } catch (err) {
       setError(err.message || t('auth.login_error'))

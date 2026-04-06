@@ -92,6 +92,19 @@ export async function POST(request) {
       },
     })
 
+    const planLabelsFr = { FREE: "Gratuit", PRO: "Pro", ENTERPRISE: "Entreprise" }
+    const planLabelsAr = { FREE: "مجاني", PRO: "احترافي", ENTERPRISE: "مؤسسي" }
+    const dueLabelFr = new Date(dueDate).toLocaleDateString("fr-MA", { month: "long", year: "numeric" })
+    const dueLabelAr = new Date(dueDate).toLocaleDateString("ar-MA", { month: "long", year: "numeric" })
+    await prisma.notification.create({
+      data: {
+        userId:  clientId,
+        type:    "SYSTEM",
+        title:   `fr:Nouvelle facture - ${dueLabelFr}||ar:فاتورة جديدة - ${dueLabelAr}`,
+        message: `fr:Facture N° ${invoiceNumber} — ${Number(amount)} DH (${planLabelsFr[invoice.plan] || invoice.plan}). Échéance: ${dueLabelFr}.||ar:فاتورة رقم ${invoiceNumber} — ${Number(amount)} درهم (${planLabelsAr[invoice.plan] || invoice.plan}). الاستحقاق: ${dueLabelAr}.`,
+      },
+    })
+
     return NextResponse.json({ data: invoice }, { status: 201 })
   } catch (error) {
     console.error("POST /api/admin/invoices error:", error)

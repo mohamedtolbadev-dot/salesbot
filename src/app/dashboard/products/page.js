@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import {
   Plus, Search, Trash2, ShoppingBag, Eye, EyeOff,
   Package, Tag, Loader2, ImageIcon, X, Pencil,
-  Maximize2, AlertCircle, RefreshCw, ChevronDown,
+  Maximize2, AlertCircle, AlertTriangle, RefreshCw, ChevronDown,
 } from "lucide-react"
 import { useLanguage } from "@/contexts/LanguageContext"
 
@@ -15,35 +15,6 @@ import { useLanguage } from "@/contexts/LanguageContext"
 function ProductsSkeleton() {
   return (
     <div className="flex flex-col gap-5 pb-6">
-      <style>{`
-        @keyframes sk-shimmer {
-          0%   { background-position: -700px 0; }
-          100% { background-position:  700px 0; }
-        }
-        .sk {
-          border-radius: 6px;
-          background: linear-gradient(
-            90deg,
-            var(--color-background-secondary, rgba(0,0,0,0.06)) 25%,
-            var(--color-background-tertiary,  rgba(0,0,0,0.11)) 50%,
-            var(--color-background-secondary, rgba(0,0,0,0.06)) 75%
-          );
-          background-size: 700px 100%;
-          animation: sk-shimmer 1.5s ease-in-out infinite;
-        }
-        .sk-brand {
-          border-radius: 8px;
-          background: linear-gradient(
-            90deg,
-            rgba(83,74,183,0.45) 25%,
-            rgba(83,74,183,0.72) 50%,
-            rgba(83,74,183,0.45) 75%
-          );
-          background-size: 700px 100%;
-          animation: sk-shimmer 1.5s ease-in-out infinite;
-        }
-      `}</style>
-
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -237,6 +208,61 @@ function FormField({ label, children }) {
 
 const inputCls = "px-3 py-2.5 bg-card border border-border rounded-lg text-[14px] outline-none focus:border-brand-400 transition-colors duration-200"
 
+/* ─────────────── Low Stock Banner ─────────────── */
+const LOW_STOCK_THRESHOLD = 5
+
+function LowStockBanner({ products, onRestock }) {
+  const { t } = useLanguage()
+  const [dismissed, setDismissed] = useState(false)
+
+  const lowStockProducts = products.filter(p => p.isActive && p.stock <= LOW_STOCK_THRESHOLD)
+
+  if (dismissed || lowStockProducts.length === 0) return null
+
+  return (
+    <div className="bg-amber-500/8 border border-amber-500/25 rounded-xl p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-amber-500/15 flex items-center justify-center">
+            <AlertTriangle size={14} className="text-amber-600" />
+          </div>
+          <div>
+            <p className="text-[14px] font-bold text-amber-700 dark:text-amber-400">{t('products.low_stock_banner_title')}</p>
+            <p className="text-[12px] text-amber-600/80 dark:text-amber-500/80">{t('products.low_stock_banner_desc')}</p>
+          </div>
+        </div>
+        <button onClick={() => setDismissed(true)} className="text-amber-500 hover:text-amber-700 transition-colors p-0.5">
+          <X size={15} />
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {lowStockProducts.map(p => (
+          <button
+            key={p.id}
+            onClick={() => onRestock(p)}
+            className="flex items-center gap-1.5 bg-card border border-amber-500/20 rounded-lg px-2.5 py-1.5 hover:border-amber-500/50 hover:shadow-sm transition-all duration-200 group"
+          >
+            <div className={cn(
+              "w-1.5 h-1.5 rounded-full shrink-0",
+              p.stock === 0 ? "bg-red-500 animate-pulse" : "bg-amber-500"
+            )} />
+            <span className="text-[13px] font-medium text-foreground truncate max-w-[120px]">{p.name}</span>
+            <span className={cn(
+              "text-[11px] font-bold px-1.5 py-0.5 rounded-md border",
+              p.stock === 0
+                ? "text-red-500 bg-red-500/10 border-red-500/20"
+                : "text-amber-600 bg-amber-500/10 border-amber-500/20"
+            )}>
+              {p.stock === 0 ? t('products.out_of_stock') : `${p.stock} ${t('products.units_left')}`}
+            </span>
+            <Package size={11} className="text-amber-500 group-hover:text-amber-600 transition-colors shrink-0" />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /* ─────────────── Product Card ─────────────── */
 function ProductCard({ product, onDetails, onEdit, onToggle, onDelete, delay = 0 }) {
   const { t } = useLanguage()
@@ -289,7 +315,7 @@ function ProductCard({ product, onDetails, onEdit, onToggle, onDelete, delay = 0
       </div>
       <div className="p-4">
         <p className="text-[14px] font-bold text-foreground truncate mb-0.5">{product.name}</p>
-        <p className="text-[15px] font-bold text-brand-600 mb-1 tabular-nums">{formatAmount(product.price)}</p>
+        <p className="text-[15px] font-bold text-brand-600 tabular-nums">{formatAmount(product.price)}</p>
         <span className={cn(
           "inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md border mb-2",
           product.stock === 0
@@ -576,10 +602,14 @@ export default function ProductsPage() {
         <StatCard label={t('products.stats_total')}     value={products.length}                                         icon={Package}  badge={t('common.all')}            delay={0}   />
         <StatCard label={t('products.stats_active')}     value={products.filter(p => p.isActive).length}                icon={Eye}      badge={t('products.active')}      delay={80}  />
         <StatCard label={t('products.stat_out_of_stock')} value={products.filter(p => p.stock === 0).length}             icon={AlertCircle} badge={t('products.out_of_stock')} delay={160} />
-        <StatCard label={t('products.stats_questions')}  value={products.reduce((a, p) => a + (p.questions || 0), 0)}   icon={Tag}      badge={t('products.questions')}  delay={240} />
+        <StatCard label={t('products.stat_low_stock')}   value={products.filter(p => p.isActive && p.stock > 0 && p.stock <= LOW_STOCK_THRESHOLD).length} icon={AlertTriangle} badge={t('products.low_stock')}          delay={240} />
       </div>
 
-      {/* ── Add Form ── */}
+      {/* ── Low Stock Banner ── */}
+      <LowStockBanner products={products} onRestock={startEdit} />
+
+      {/* ── Add Form ── */
+}
       {showAddForm && (
         <div className="bg-card border border-border rounded-xl p-5 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="flex items-center justify-between mb-4">

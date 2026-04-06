@@ -1,114 +1,147 @@
 import PDFDocument from "pdfkit"
 
-export function generateInvoicePDF(invoice) {
+export function generateInvoicePDF(invoice, locale = "fr") {
   return new Promise((resolve, reject) => {
     try {
+      const isFr = locale === "fr"
+
+      // ── Labels ──
+      const L = isFr ? {
+        title:       "FACTURE",
+        invoiceNum:  "Facture N°:",
+        clientInfo:  "Informations client",
+        name:        "Nom",
+        store:       "Boutique",
+        email:       "Email",
+        phone:       "Téléphone",
+        details:     "Détails de la facture",
+        colDesc:     "Description",
+        colAmount:   "Montant",
+        plan:        "Plan",
+        currency:    "DH",
+        issueDate:   "Date d'émission:",
+        dueDate:     "Date d'échéance:",
+        bankInfo:    "Informations de paiement",
+        notes:       "Notes",
+        total:       "TOTAL:",
+        footer1:     "Merci de votre confiance!",
+        footer2:     "salesbot.ma - Agent de vente intelligent",
+        planLabels:  { FREE: "Gratuit", PRO: "Pro", ENTERPRISE: "Entreprise" },
+        dateLocale:  "fr-MA",
+      } : {
+        title:       "FACTURE",
+        invoiceNum:  "Facture N:",
+        clientInfo:  "Client Info",
+        name:        "Name",
+        store:       "Store",
+        email:       "Email",
+        phone:       "Phone",
+        details:     "Invoice Details",
+        colDesc:     "Description",
+        colAmount:   "Amount",
+        plan:        "Plan",
+        currency:    "DH",
+        issueDate:   "Issue Date:",
+        dueDate:     "Due Date:",
+        bankInfo:    "Payment Info",
+        notes:       "Notes",
+        total:       "TOTAL:",
+        footer1:     "Thank you for your trust!",
+        footer2:     "salesbot.ma - Smart Sales Agent",
+        planLabels:  { FREE: "Free", PRO: "Pro", ENTERPRISE: "Enterprise" },
+        dateLocale:  "en-MA",
+      }
+
+      const planLabel = L.planLabels[invoice.plan] || invoice.plan
+      const dueDateStr = new Date(invoice.dueDate).toLocaleDateString(L.dateLocale, {
+        day: "numeric", month: "long", year: "numeric"
+      })
+      const createdDateStr = new Date(invoice.createdAt).toLocaleDateString(L.dateLocale, {
+        day: "numeric", month: "long", year: "numeric"
+      })
+
       const doc = new PDFDocument({ size: "A4", margin: 50 })
       const chunks = []
-
       doc.on("data", chunk => chunks.push(chunk))
-      doc.on("end", () => {
-        const pdfBuffer = Buffer.concat(chunks)
-        resolve(pdfBuffer)
-      })
+      doc.on("end",  () => resolve(Buffer.concat(chunks)))
       doc.on("error", reject)
 
-      const planLabels = { FREE: "مجاني", PRO: "احترافي", ENTERPRISE: "مؤسسي" }
-      const planLabel = planLabels[invoice.plan] || invoice.plan
-      const dueDate = new Date(invoice.dueDate).toLocaleDateString("ar-MA", {
-        day: "numeric", month: "long", year: "numeric"
-      })
-      const createdDate = new Date(invoice.createdAt).toLocaleDateString("ar-MA", {
-        day: "numeric", month: "long", year: "numeric"
-      })
-
-      // Header
-      doc.fontSize(24).fillColor("#2563eb").text("فاتورة", { align: "center" })
-      doc.moveDown(0.5)
-      doc.fontSize(12).fillColor("#666").text(`رقم الفاتورة: ${invoice.invoiceNumber}`, { align: "center" })
+      // ── Header ──
+      doc.fontSize(28).fillColor("#2563eb").text(L.title, { align: "center" })
+      doc.moveDown(0.3)
+      doc.fontSize(12).fillColor("#555").text(`${L.invoiceNum} ${invoice.invoiceNumber}`, { align: "center" })
       doc.moveDown(1)
-
-      // Divider
       doc.strokeColor("#e5e7eb").lineWidth(1).moveTo(50, doc.y).lineTo(550, doc.y).stroke()
       doc.moveDown(1)
 
-      // Client Info
-      doc.fontSize(14).fillColor("#111827").text("معلومات العميل", { align: "right" })
-      doc.moveDown(0.5)
+      // ── Client Info ──
+      doc.fontSize(13).fillColor("#111827").text(L.clientInfo)
+      doc.moveDown(0.4)
       doc.fontSize(11).fillColor("#374151")
-      doc.text(`الاسم: ${invoice.client.name}`, { align: "right" })
-      doc.text(`المتجر: ${invoice.client.storeName || "-"}`, { align: "right" })
-      if (invoice.client.email) {
-        doc.text(`البريد: ${invoice.client.email}`, { align: "right" })
-      }
-      if (invoice.client.phone) {
-        doc.text(`الهاتف: ${invoice.client.phone}`, { align: "right" })
-      }
+      doc.text(`${L.name}: ${invoice.client.name}`)
+      doc.text(`${L.store}: ${invoice.client.storeName || "-"}`)
+      if (invoice.client.email) doc.text(`${L.email}: ${invoice.client.email}`)
+      if (invoice.client.phone) doc.text(`${L.phone}: ${invoice.client.phone}`)
       doc.moveDown(1)
-
-      // Divider
       doc.strokeColor("#e5e7eb").lineWidth(1).moveTo(50, doc.y).lineTo(550, doc.y).stroke()
       doc.moveDown(1)
 
-      // Invoice Details
-      doc.fontSize(14).fillColor("#111827").text("تفاصيل الفاتورة", { align: "right" })
+      // ── Table ──
+      doc.fontSize(13).fillColor("#111827").text(L.details)
       doc.moveDown(0.5)
 
       const tableY = doc.y
-      doc.fontSize(11).fillColor("#374151")
-
-      // Table Header
-      doc.fillColor("#f3f4f6").rect(50, tableY, 500, 30).fill()
-      doc.fillColor("#111827").fontSize(10)
-      doc.text("البيان", 400, tableY + 8, { align: "right", width: 100 })
-      doc.text("القيمة", 60, tableY + 8, { align: "left", width: 100 })
-
-      // Table Row
-      doc.fillColor("#fff").rect(50, tableY + 30, 500, 30).fill()
+      // header row
+      doc.fillColor("#dbeafe").rect(50, tableY, 500, 28).fill()
+      doc.fillColor("#1e40af").fontSize(10)
+      doc.text(L.colDesc,   60, tableY + 8, { width: 300 })
+      doc.text(L.colAmount, 380, tableY + 8, { width: 150, align: "right" })
+      // data row
+      doc.fillColor("#f9fafb").rect(50, tableY + 28, 500, 28).fill()
       doc.fillColor("#374151").fontSize(11)
-      doc.text(`خطة ${planLabel}`, 400, tableY + 38, { align: "right", width: 100 })
-      doc.text(`${invoice.amount} درهم`, 60, tableY + 38, { align: "left", width: 100 })
+      doc.text(`${L.plan}: ${planLabel}`, 60, tableY + 36, { width: 300 })
+      doc.text(`${invoice.amount} ${L.currency}`, 380, tableY + 36, { width: 150, align: "right" })
 
-      doc.y = tableY + 70
-      doc.moveDown(1)
+      doc.y = tableY + 65
+      doc.moveDown(0.8)
 
-      // Dates
+      // ── Dates ──
       doc.fontSize(11).fillColor("#374151")
-      doc.text(`تاريخ الإصدار: ${createdDate}`, { align: "right" })
-      doc.text(`تاريخ الاستحقاق: ${dueDate}`, { align: "right" })
+      doc.text(`${L.issueDate} ${createdDateStr}`)
+      doc.text(`${L.dueDate} ${dueDateStr}`)
       doc.moveDown(1)
 
-      // Bank Info
+      // ── Bank Info ──
       if (invoice.bankInfo) {
         doc.strokeColor("#e5e7eb").lineWidth(1).moveTo(50, doc.y).lineTo(550, doc.y).stroke()
-        doc.moveDown(1)
-        doc.fontSize(14).fillColor("#111827").text("معلومات الدفع", { align: "right" })
-        doc.moveDown(0.5)
-        doc.fontSize(11).fillColor("#374151")
-        doc.text(invoice.bankInfo, { align: "right" })
+        doc.moveDown(0.8)
+        doc.fontSize(13).fillColor("#111827").text(L.bankInfo)
+        doc.moveDown(0.4)
+        doc.fontSize(11).fillColor("#374151").text(invoice.bankInfo, { lineGap: 3 })
         doc.moveDown(1)
       }
 
-      // Notes
+      // ── Notes ──
       if (invoice.notes) {
         doc.strokeColor("#e5e7eb").lineWidth(1).moveTo(50, doc.y).lineTo(550, doc.y).stroke()
-        doc.moveDown(1)
-        doc.fontSize(14).fillColor("#111827").text("ملاحظات", { align: "right" })
-        doc.moveDown(0.5)
-        doc.fontSize(11).fillColor("#374151")
-        doc.text(invoice.notes, { align: "right" })
+        doc.moveDown(0.8)
+        doc.fontSize(13).fillColor("#111827").text(L.notes)
+        doc.moveDown(0.4)
+        doc.fontSize(11).fillColor("#374151").text(invoice.notes, { lineGap: 3 })
         doc.moveDown(1)
       }
 
-      // Total
+      // ── Total ──
       doc.strokeColor("#2563eb").lineWidth(2).moveTo(50, doc.y).lineTo(550, doc.y).stroke()
-      doc.moveDown(0.5)
-      doc.fontSize(16).fillColor("#2563eb").text(`الإجمالي: ${invoice.amount} درهم`, { align: "center" })
-      doc.moveDown(1)
+      doc.moveDown(0.6)
+      doc.fontSize(16).fillColor("#2563eb")
+        .text(`${L.total}  ${invoice.amount} ${L.currency}`, { align: "center" })
+      doc.moveDown(1.5)
 
-      // Footer
-      doc.fontSize(10).fillColor("#9ca3af").text("شكراً لثقتكم!", { align: "center" })
-      doc.text("wakil.ma - وكيل المبيعات الذكي", { align: "center" })
+      // ── Footer ──
+      doc.fontSize(10).fillColor("#9ca3af")
+        .text(L.footer1, { align: "center" })
+        .text(L.footer2, { align: "center" })
 
       doc.end()
     } catch (error) {

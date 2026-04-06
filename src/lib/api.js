@@ -77,11 +77,41 @@ export const authAPI = {
     }),
 
   me: () => fetchAPI("/api/auth/me"),
+
+  sendOtp: (data) =>
+    fetchAPI("/api/auth/send-otp", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  verifyOtp: (data) =>
+    fetchAPI("/api/auth/verify-otp", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  resendOtp: (email) =>
+    fetchAPI("/api/auth/resend-otp", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
+  phoneSetupSend: (phone) =>
+    fetchAPI("/api/auth/phone-setup/send", {
+      method: "POST",
+      body: JSON.stringify({ phone }),
+    }),
+
+  phoneSetupVerify: (phone, code) =>
+    fetchAPI("/api/auth/phone-setup/verify", {
+      method: "POST",
+      body: JSON.stringify({ phone, code }),
+    }),
 }
 
 // Stats API
 export const statsAPI = {
-  getStats: () => fetchAPI("/api/stats"),
+  getStats: (period = "week") => fetchAPI(`/api/stats?period=${period}`),
 }
 
 // Products APIs
@@ -321,8 +351,11 @@ export const adminAPI = {
     fetchAPI(`/api/admin/invoices/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteInvoice: (id) =>
     fetchAPI(`/api/admin/invoices/${id}`, { method: "DELETE" }),
-  sendInvoice: (id) =>
-    fetchAPI(`/api/admin/invoices/${id}/send`, { method: "POST" }),
+  sendInvoice: (id, locale = "fr") =>
+    fetchAPI(`/api/admin/invoices/${id}/send`, {
+      method: "POST",
+      body: JSON.stringify({ locale }),
+    }),
 }
 
 export default fetchAPI

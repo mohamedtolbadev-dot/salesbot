@@ -4,6 +4,10 @@ import { successResponse, errorResponse } from "@/lib/response"
 import { rateLimit } from "@/lib/rateLimit"
 
 export async function POST(request) {
+  return errorResponse(
+    "هذا المسار غير متاح. استخدم /api/auth/send-otp ثم /api/auth/verify-otp للتسجيل.",
+    410
+  )
   try {
     // Rate limiting - 10 attempts per 15 minutes
     const rateLimitResult = rateLimit(request, true)

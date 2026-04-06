@@ -120,7 +120,30 @@ export async function POST(request) {
         console.log(`✅ [${incoming.from}] Agent found: ${agent.id}, userId: ${agent.userId}`)
 
         if (!agent.isActive) {
-          console.log(`⏸️ [${incoming.from}] Agent متوقف`)
+          console.log(`⏸️ [${incoming.from}] Agent متوقف — حفظ الرسالة بدون رد AI`)
+          const cleanText = sanitizeInput(incoming.text)
+          if (!cleanText) return
+          try {
+            const customer = await prisma.customer.findFirst({
+              where: { userId: agent.userId, phone: incoming.from }
+            })
+            if (!customer) return
+            const conversation = await prisma.conversation.findFirst({
+              where: { userId: agent.userId, customerId: customer.id, stage: { notIn: ["ARCHIVED"] } },
+              orderBy: { updatedAt: "desc" }
+            })
+            if (!conversation) return
+            await prisma.message.create({
+              data: { conversationId: conversation.id, role: "USER", content: cleanText }
+            })
+            await prisma.conversation.update({
+              where: { id: conversation.id },
+              data: { isRead: false, updatedAt: new Date() }
+            })
+            console.log(`💾 [${incoming.from}] رسالة محفوظة (Agent متوقف)`)
+          } catch (err) {
+            console.error(`❌ [${incoming.from}] خطأ في حفظ الرسالة:`, err.message)
+          }
           return
         }
 
@@ -220,8 +243,8 @@ export async function POST(request) {
               data: {
                 userId: agent.userId,
                 type: "SYSTEM",
-                title: "🚨 مشكلة في WhatsApp Token",
-                message: "انتهت صلاحية Token الوصول. يرجى الذهاب إلى الإعدادات وتحديث WhatsApp من جديد.",
+                title: "fr:🚨 Problème WhatsApp Token||ar:🚨 مشكلة في WhatsApp Token",
+                message: "fr:Le token d'accès a expiré. Allez dans les paramètres et mettez à jour WhatsApp.||ar:انتهت صلاحية Token الوصول. يرجى الذهاب إلى الإعدادات وتحديث WhatsApp من جديد.",
                 isRead: false,
               }
             })

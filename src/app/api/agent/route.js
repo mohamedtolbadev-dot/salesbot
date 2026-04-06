@@ -55,6 +55,11 @@ export async function PUT(request) {
 
     const agent = await prisma.agent.update({
       where: { userId: user.id },
+      include: {
+        objectionReplies: {
+          orderBy: { order: "asc" }
+        }
+      },
       data: {
         ...(name !== undefined && { name }),
         ...(domain !== undefined && { domain }),

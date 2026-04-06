@@ -1,13 +1,38 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Script from "next/script"
 import Link from "next/link"
 import { authAPI } from "@/lib/api"
-import { cn } from "@/lib/utils"
 import { useLanguage } from "@/contexts/LanguageContext"
-import { Loader2, User, Mail, Lock, ArrowLeft, CheckCircle, ShoppingBag, Wrench } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Loader2, User, Mail, Lock, ArrowLeft, CheckCircle, ShoppingBag, Wrench, Phone, ChevronDown } from "lucide-react"
+
+function parseBiErr(msg, lang) {
+  if (!msg || !msg.includes("||fr:") && !msg.includes("fr:")) return msg
+  const fr = msg.split("||ar:")[0]?.replace(/^fr:/, "")
+  const ar = msg.split("||ar:")[1] || msg.split("||")?.[1]
+  return lang === "ar" ? (ar || msg) : (fr || msg)
+}
+
+/* ─── Country dial codes ─── */
+const COUNTRIES = [
+  { code: "MA", flag: "\uD83C\uDDF2\uD83C\uDDE6", fr: "Maroc",           ar: "\u0627\u0644\u0645\u063a\u0631\u0628",     dial: "+212", ph: "06 XX XX XX XX" },
+  { code: "SA", flag: "\uD83C\uDDF8\uD83C\uDDE6", fr: "Arabie saoudite",  ar: "\u0627\u0644\u0633\u0639\u0648\u062f\u064a\u0629",   dial: "+966", ph: "05X XXX XXXX"  },
+  { code: "AE", flag: "\uD83C\uDDE6\uD83C\uDDEA", fr: "\u00c9mirats arabes",   ar: "\u0627\u0644\u0625\u0645\u0627\u0631\u0627\u062a",   dial: "+971", ph: "05X XXX XXXX"  },
+  { code: "QA", flag: "\uD83C\uDDF6\uD83C\uDDE6", fr: "Qatar",            ar: "\u0642\u0637\u0631",         dial: "+974", ph: "3X XX XXXX"    },
+  { code: "KW", flag: "\uD83C\uDDF0\uD83C\uDDFC", fr: "Kowe\u00ebt",           ar: "\u0627\u0644\u0643\u0648\u064a\u062a",     dial: "+965", ph: "5X XX XXXX"    },
+  { code: "BH", flag: "\uD83C\uDDE7\uD83C\uDDED", fr: "Bahre\u00efn",          ar: "\u0627\u0644\u0628\u062d\u0631\u064a\u0646",   dial: "+973", ph: "3X XX XXXX"    },
+  { code: "OM", flag: "\uD83C\uDDF4\uD83C\uDDF2", fr: "Oman",             ar: "\u0639\u064f\u0645\u0627\u0646",        dial: "+968", ph: "9X XX XXXX"    },
+  { code: "FR", flag: "\uD83C\uDDEB\uD83C\uDDF7", fr: "France",           ar: "\u0641\u0631\u0646\u0633\u0627",       dial: "+33",  ph: "06 XX XX XX XX" },
+  { code: "DE", flag: "\uD83C\uDDE9\uD83C\uDDEA", fr: "Allemagne",        ar: "\u0623\u0644\u0645\u0627\u0646\u064a\u0627",      dial: "+49",  ph: "015X XXXXXXX"  },
+  { code: "GB", flag: "\uD83C\uDDEC\uD83C\uDDE7", fr: "Royaume-Uni",      ar: "\u0628\u0631\u064a\u0637\u0627\u0646\u064a\u0627",    dial: "+44",  ph: "07XXX XXXXXX"  },
+  { code: "ES", flag: "\uD83C\uDDEA\uD83C\uDDF8", fr: "Espagne",          ar: "\u0625\u0633\u0628\u0627\u0646\u064a\u0627",     dial: "+34",  ph: "6XX XXX XXX"   },
+  { code: "IT", flag: "\uD83C\uDDEE\uD83C\uDDF9", fr: "Italie",           ar: "\u0625\u064a\u0637\u0627\u0644\u064a\u0627",     dial: "+39",  ph: "3XX XXX XXXX"  },
+  { code: "US", flag: "\uD83C\uDDFA\uD83C\uDDF8", fr: "\u00c9tats-Unis",       ar: "\u0623\u0645\u0631\u064a\u0643\u0627",      dial: "+1",   ph: "(555) XXX-XXXX" },
+  { code: "CA", flag: "\uD83C\uDDE8\uD83C\uDDE6", fr: "Canada",           ar: "\u0643\u0646\u062f\u0627",        dial: "+1",   ph: "(555) XXX-XXXX" },
+]
 
 // Theme hook for register page
 function useTheme() {
@@ -38,18 +63,32 @@ function GoogleIcon({ size = 20 }) {
 
 export default function RegisterPage() {
   const router = useRouter()
-  const { t } = useLanguage()
+  const { t, language, setLanguage, isRTL } = useLanguage()
   const { theme } = useTheme()
   const isDark = theme === "dark"
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
+    phone: "",
     mode: "product",
   })
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0])
+  const [showCountryDrop, setShowCountryDrop] = useState(false)
+  const dropRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropRef.current && !dropRef.current.contains(e.target)) {
+        setShowCountryDrop(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   // Initialize Google Sign-In
   useEffect(() => {
@@ -80,11 +119,9 @@ export default function RegisterPage() {
 
       const result = await authAPI.googleLogin(response.credential)
 
-      // Save token
       localStorage.setItem("token", result.data.token)
       localStorage.setItem("user", JSON.stringify(result.data.user))
 
-      // Redirect to dashboard
       router.push("/dashboard")
     } catch (err) {
       setError(err.message || t('auth.google_error'))
@@ -108,17 +145,26 @@ export default function RegisterPage() {
     try {
       setLoading(true)
       setError(null)
-      
-      const response = await authAPI.register(formData)
-      
-      // Save token
-      localStorage.setItem("token", response.data.token)
-      localStorage.setItem("user", JSON.stringify(response.data.user))
-      
-      // Redirect to dashboard
-      router.push("/dashboard")
+
+      const phone = formData.phone?.trim()
+        ? selectedCountry.dial + formData.phone.trim().replace(/^0+/, "")
+        : undefined
+
+      const res = await authAPI.sendOtp({
+        name:     formData.name,
+        email:    formData.email,
+        password: formData.password,
+        phone,
+        mode:     formData.mode,
+      })
+
+      sessionStorage.setItem("otp_email",  formData.email)
+      sessionStorage.setItem("otp_masked", res.data?.masked || formData.email)
+      if (res.data?.devCode) sessionStorage.setItem("otp_dev", res.data.devCode)
+
+      router.push("/verify")
     } catch (err) {
-      setError(err.message || t('auth.register_error'))
+      setError(parseBiErr(err.message, language) || t('auth.register_error'))
     } finally {
       setLoading(false)
     }
@@ -129,7 +175,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative p-4" dir="rtl">
+    <div className="min-h-screen flex items-center justify-center relative p-4" dir={isRTL ? "rtl" : "ltr"}>
       {/* ✅ خلفية الصفحة — fixed على مستوى الجذر */}
       <div
         className="fixed inset-0 -z-20 transition-all duration-700"
@@ -166,8 +212,8 @@ export default function RegisterPage() {
       />
 
       <div className="w-full max-w-md">
-        {/* Back to home */}
-        <div className="mb-6">
+        {/* Back to home + Language switcher */}
+        <div className="mb-6 flex items-center justify-between">
           <Link 
             href="/" 
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-brand-600 transition-colors"
@@ -175,6 +221,22 @@ export default function RegisterPage() {
             <ArrowLeft size={16} />
             {t('auth.back_home')}
           </Link>
+          <div className="flex items-center rounded-lg border border-border/60 overflow-hidden text-[11px] font-bold bg-background/60 backdrop-blur-sm">
+            <button
+              onClick={() => setLanguage('fr')}
+              className={cn(
+                "px-2.5 py-1 transition-colors",
+                language === 'fr' ? "bg-brand-600 text-white" : "text-muted-foreground hover:bg-secondary"
+              )}
+            >FR</button>
+            <button
+              onClick={() => setLanguage('ar')}
+              className={cn(
+                "px-2.5 py-1 transition-colors",
+                language === 'ar' ? "bg-brand-600 text-white" : "text-muted-foreground hover:bg-secondary"
+              )}
+            >AR</button>
+          </div>
         </div>
 
         {/* Form Card — matching home page style */}
@@ -241,7 +303,7 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {/* Name Field */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">{t('auth.full_name')}</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.full_name')} <span className="text-red-500">*</span></label>
               <div className="relative group">
                 <User size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-brand-600 transition-colors" />
                 <input
@@ -290,7 +352,7 @@ export default function RegisterPage() {
 
             {/* Email Field */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">{t('auth.email')}</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.email')} <span className="text-red-500">*</span></label>
               <div className="relative group">
                 <Mail size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-brand-600 transition-colors" />
                 <input
@@ -305,9 +367,63 @@ export default function RegisterPage() {
               </div>
             </div>
 
+            {/* Phone Field */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">
+                <Phone size={12} className="inline me-1 mb-0.5" />
+                {t('auth.phone')} <span className="text-muted-foreground text-[10px] ms-1">({t('auth.optional')})</span>
+              </label>
+              <div className="flex items-stretch gap-0" dir="ltr" ref={dropRef}>
+
+                {/* Country selector */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowCountryDrop(v => !v)}
+                    className="flex items-center gap-1.5 h-full px-3 py-2.5 bg-background border border-border rounded-s-lg text-sm font-medium hover:bg-secondary transition-colors border-e-0 min-w-[90px]"
+                  >
+                    <span className="text-base leading-none">{selectedCountry.flag}</span>
+                    <span className="text-muted-foreground text-xs">{selectedCountry.dial}</span>
+                    <ChevronDown size={12} className={`text-muted-foreground transition-transform ${showCountryDrop ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {showCountryDrop && (
+                    <div className="absolute top-full left-0 mt-1 z-50 w-52 max-h-56 overflow-y-auto bg-card border border-border rounded-xl shadow-xl py-1">
+                      {COUNTRIES.map(c => (
+                        <button
+                          key={c.code}
+                          type="button"
+                          onClick={() => { setSelectedCountry(c); setShowCountryDrop(false) }}
+                          className={cn(
+                            "w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-secondary transition-colors text-left",
+                            selectedCountry.code === c.code && "bg-brand-600/10 text-brand-700 font-medium"
+                          )}
+                        >
+                          <span className="text-base">{c.flag}</span>
+                          <span className="flex-1 truncate">{language === 'ar' ? c.ar : c.fr}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">{c.dial}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Number input */}
+                <input
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder={selectedCountry.ph}
+                  className="flex-1 px-3 py-2.5 bg-background border border-border rounded-e-lg text-sm outline-none focus:border-brand-400 transition-all"
+                  dir="ltr"
+                />
+              </div>
+            </div>
+
             {/* Password Field */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-muted-foreground">{t('auth.password')}</label>
+              <label className="text-xs font-semibold text-muted-foreground">{t('auth.password')} <span className="text-red-500">*</span></label>
               <div className="relative group">
                 <Lock size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-brand-600 transition-colors" />
                 <input

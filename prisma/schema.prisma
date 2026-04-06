@@ -34,6 +34,17 @@ model User {
   @@map("users")
 }
 
+model VerificationToken {
+  id        String   @id @default(cuid())
+  phone     String
+  code      String
+  data      String   @db.Text
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("verification_tokens")
+}
+
 model Agent {
   id                String           @id @default(cuid())
   userId            String           @unique

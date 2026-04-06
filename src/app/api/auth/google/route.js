@@ -100,15 +100,15 @@ export async function POST(request) {
     return successResponse({
       token: jwtToken,
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
+        id:        user.id,
+        name:      user.name,
+        email:     user.email,
         storeName: user.storeName,
-        plan: user.plan,
-        role: user.role,
+        plan:      user.plan,
+        role:      user.role,
         agent: user.agent ? {
-          id: user.agent.id,
-          name: user.agent.name,
+          id:       user.agent.id,
+          name:     user.agent.name,
           isActive: user.agent.isActive,
         } : null,
       },

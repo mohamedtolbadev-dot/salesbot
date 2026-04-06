@@ -368,21 +368,36 @@ export default function AnalyticsPage() {
   const [error, setError] = useState(null)
   const [activePeriod, setActivePeriod] = useState(0)
 
-  useEffect(() => { fetchStats() }, [])
+  const PERIOD_KEYS = ["week", "month", "3months"]
 
-  const weeklyDays = useMemo(() =>
-    Array.from({ length: stats?.weeklyChart?.length || 0 }, (_, i) => {
-      const d = new Date()
-      d.setDate(d.getDate() - (stats?.weeklyChart?.length - 1 - i) || 0)
-      return d.toLocaleDateString(locale, { weekday: "short" })
-    }),
-    [stats?.weeklyChart?.length, locale]
-  )
+  useEffect(() => { fetchStats(activePeriod) }, [activePeriod])
 
-  async function fetchStats() {
+  const chartLabels = useMemo(() => {
+    const n    = stats?.weeklyChart?.length || 0
+    const gran = stats?.chartGranularity || "day"
+    return Array.from({ length: n }, (_, i) => {
+      const pos = n - 1 - i
+      if (gran === "day") {
+        const d = new Date()
+        d.setDate(d.getDate() - pos)
+        return d.toLocaleDateString(locale, { weekday: "short" })
+      } else if (gran === "week") {
+        const d = new Date()
+        d.setDate(d.getDate() - pos * 7)
+        return d.toLocaleDateString(locale, { day: "numeric", month: "short" })
+      } else {
+        const d = new Date()
+        d.setMonth(d.getMonth() - pos)
+        return d.toLocaleDateString(locale, { month: "short" })
+      }
+    })
+  }, [stats?.weeklyChart, stats?.chartGranularity, locale])
+
+  async function fetchStats(periodIdx = 0) {
+    const period = PERIOD_KEYS[periodIdx] || "week"
     try {
       setLoading(true); setError(null)
-      const response = await statsAPI.getStats()
+      const response = await statsAPI.getStats(period)
       setStats(response.data)
     } catch {
       setError("analytics.loading_error")
@@ -440,12 +455,17 @@ export default function AnalyticsPage() {
       </div>
 
       {/* ── 2. Stat Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label={t('analytics.today_convs')} rawValue={stats?.weekConversations || 0}         sub={t('dash.week')}          icon={MessageCircle} delay={0}   />
-        <StatCard label={t('analytics.conversion')}   display={(stats?.conversionRate || 0) + "%"}      sub={t('dash.close_rate')}    icon={TrendingUp}    delay={80}  />
-        <StatCard label={t('dash.today_revenue')}      display={formatAmount(stats?.weekRevenue || 0, locale)}    sub={t('analytics.week_revenue')} icon={ShoppingBag} delay={160} />
-        <StatCard label={t('orders.total')}            display={formatAmount(stats?.avgOrderValue || 0, locale)} sub={t('dash.today_sales')}   icon={Zap}          delay={240} />
-      </div>
+      {(() => {
+        const periodLabel = [t('dash.week'), t('dash.month'), `3 ${t('dash.month')}`][activePeriod]
+        return (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label={t('analytics.today_convs')} rawValue={stats?.weekConversations || 0}          sub={periodLabel}             icon={MessageCircle} delay={0}   />
+            <StatCard label={t('analytics.conversion')}   display={(stats?.conversionRate || 0) + "%"}       sub={t('dash.close_rate')}    icon={TrendingUp}    delay={80}  />
+            <StatCard label={t('dash.today_revenue')}      display={formatAmount(stats?.weekRevenue || 0, locale)}     sub={periodLabel}             icon={ShoppingBag}   delay={160} />
+            <StatCard label={t('orders.total')}            display={formatAmount(stats?.avgOrderValue || 0, locale)}  sub={t('dash.today_sales')}   icon={Zap}           delay={240} />
+          </div>
+        )
+      })()}
 
       {/* ── 3. Charts Row ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -469,7 +489,7 @@ export default function AnalyticsPage() {
           </div>
           <div className="flex items-end gap-2">
             {weeklyChart.map((val, i) => (
-              <ChartBar key={i} val={val} maxVal={maxVal} day={weeklyDays[i] || ""} isToday={i === weeklyChart.length - 1} delay={i * 60} />
+              <ChartBar key={i} val={val} maxVal={maxVal} day={chartLabels[i] || ""} isToday={i === weeklyChart.length - 1} delay={i * 60} />
             ))}
           </div>
         </div>

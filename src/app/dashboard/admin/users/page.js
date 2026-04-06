@@ -264,6 +264,9 @@ export default function AdminUsersPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">{user.name}</p>
+                    {user.storeName && (
+                      <p className="text-[11px] font-medium text-brand-600 truncate">{user.storeName}</p>
+                    )}
                     <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
                   </div>
                 </div>
@@ -292,8 +295,8 @@ export default function AdminUsersPage() {
                 <span className={cn(
                   "mr-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-md",
                   user.isActive
-                    ? "bg-secondary text-muted-foreground"
-                    : "bg-secondary text-muted-foreground"
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400"
+                    : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                 )}>
                   {user.isActive ? t('admin.active') : t('admin.inactive')}
                 </span>

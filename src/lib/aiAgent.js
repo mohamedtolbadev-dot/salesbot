@@ -1259,8 +1259,12 @@ export async function processIncomingMessage({
         data: {
           userId,
           type: "NEW_ORDER",
-          title: isServiceMode ? "حجز جديد! 🎉" : "طلب جديد! 🎉",
-          message: `${customerName} أكد ${isServiceMode ? 'حجز' : 'طلب'} بقيمة ${totalAmount || 0} درهم`,
+          title: isServiceMode
+            ? `fr:Nouvelle réservation! 🎉||ar:حجز جديد! 🎉`
+            : `fr:Nouvelle commande! 🎉||ar:طلب جديد! 🎉`,
+          message: isServiceMode
+            ? `fr:${customerName} a confirmé une réservation de ${totalAmount || 0} DH||ar:${customerName} أكد حجز بقيمة ${totalAmount || 0} درهم`
+            : `fr:${customerName} a confirmé une commande de ${totalAmount || 0} DH||ar:${customerName} أكد طلب بقيمة ${totalAmount || 0} درهم`,
         }
       })
     }
@@ -1271,8 +1275,8 @@ export async function processIncomingMessage({
         data: {
           userId,
           type: "OBJECTION_ALERT",
-          title: "اعتراض يحتاج متابعة 🔔",
-          message: `${customerName} — Score ${score}%`,
+          title: `fr:Objection à suivre 🔔||ar:اعتراض يحتاج متابعة 🔔`,
+          message: `fr:${customerName} — Score ${score}%||ar:${customerName} — Score ${score}%`,
         }
       })
     }

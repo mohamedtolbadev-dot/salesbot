@@ -12,7 +12,7 @@ import {
   LayoutDashboard, MessageCircle, BarChart3,
   ShoppingBag, Users, Settings, Calendar, ClipboardList,
   ShoppingCart, AlertTriangle, FileBarChart,
-  WifiOff, Info, Mail,
+  WifiOff, Info, Mail, FileText,
 } from "lucide-react"
 
 /* ─────────────── Page map keys ─────────────── */
@@ -25,6 +25,7 @@ const PAGE_MAP_KEYS = {
   "/dashboard/products":      { key: "nav.products",      icon: ShoppingBag     },
   "/dashboard/customers":     { key: "nav.customers",     icon: Users           },
   "/dashboard/settings":      { key: "nav.settings",      icon: Settings        },
+  "/dashboard/invoices":      { key: "nav.invoices",      icon: FileText        },
 }
 
 /* ─────────────── Notification navigation ─────────────── */
@@ -37,14 +38,34 @@ const NOTIF_LINKS = {
   SYSTEM:           "/dashboard/settings",
 }
 
-/* ─────────────── Relative time ─────────────── */
-function notifTimeAgo(dateStr, language) {
-  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
-  const isAr = language === "ar"
-  if (diff < 60)   return isAr ? "الآن"          : "à l'instant"
-  if (diff < 3600) { const m = Math.floor(diff / 60);   return isAr ? `منذ ${m} د`    : `il y a ${m} min` }
-  if (diff < 86400){ const h = Math.floor(diff / 3600); return isAr ? `منذ ${h} س`    : `il y a ${h}h`    }
-  const d = Math.floor(diff / 86400);              return isAr ? `منذ ${d} يوم` : `il y a ${d}j`
+function getNotifLink(notif) {
+  if (notif.type === "NEW_ORDER") {
+    const raw = notif.title || ""
+    const t = raw.replace(/^fr:|^ar:/, "").toLowerCase()
+    if (t.includes("r\u00e9servation") || t.includes("reservation") || t.includes("\u062d\u062c\u0632"))
+      return "/dashboard/appointments"
+    return "/dashboard/orders"
+  }
+  if (notif.type === "SYSTEM") {
+    const raw = notif.title || ""
+    const t = raw.replace(/^fr:|^ar:/, "").toLowerCase()
+    if (t.includes("factur") || t.includes("\u0641\u0627\u062a\u0648\u0631"))
+      return "/dashboard/invoices"
+    if (t.includes("stock") || t.includes("\u0645\u062e\u0632\u0648\u0646"))
+      return "/dashboard/products"
+    if (t.includes("token") || t.includes("whatsapp"))
+      return "/dashboard/settings"
+    return "/dashboard/settings"
+  }
+  return NOTIF_LINKS[notif.type] || null
+}
+
+/* ─────────────── Bilingual text parser ─────────────── */
+function localizeNotif(text, lang) {
+  if (!text || !text.includes("||")) return text
+  const target = lang === "ar" ? "ar:" : "fr:"
+  const part = text.split("||").find(p => p.startsWith(target))
+  return part ? part.slice(target.length) : text.split("||")[0].replace(/^fr:|^ar:/, "")
 }
 
 /* ─────────────── Notification icons ─────────────── */
@@ -65,6 +86,16 @@ function NotifIcon({ type }) {
       <Ico size={13} />
     </div>
   )
+}
+
+function notifTimeAgo(dateStr, lang) {
+  if (!dateStr) return ""
+  const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000)
+  const isFr = lang !== "ar"
+  if (diff < 60)   return isFr ? "À l'instant"          : "الآن"
+  if (diff < 3600) return isFr ? `Il y a ${Math.floor(diff/60)} min`  : `منذ ${Math.floor(diff/60)} د`
+  if (diff < 86400) return isFr ? `Il y a ${Math.floor(diff/3600)} h` : `منذ ${Math.floor(diff/3600)} س`
+  return isFr ? `Il y a ${Math.floor(diff/86400)} j`    : `منذ ${Math.floor(diff/86400)} ي`
 }
 
 function userInitial(user) {
@@ -132,7 +163,7 @@ export function TopBar() {
         setUnreadCount(c => Math.max(0, c - 1))
       } catch {}
     }
-    const link = NOTIF_LINKS[notif.type]
+    const link = getNotifLink(notif)
     if (link) {
       setShowNotifs(false)
       router.push(link)
@@ -301,8 +332,8 @@ export function TopBar() {
                       >
                         <NotifIcon type={n.type} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-bold text-foreground leading-tight">{n.title}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">{n.message}</p>
+                          <p className="text-[12px] font-bold text-foreground leading-tight">{localizeNotif(n.title, language)}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">{localizeNotif(n.message, language)}</p>
                           <p className="text-[11px] text-muted-foreground/60 mt-1">
                             {notifTimeAgo(n.createdAt, language)}
                           </p>

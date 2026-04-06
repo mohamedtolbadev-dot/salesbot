@@ -51,41 +51,53 @@ function calculateAvgResponseTime(conversations) {
   return Math.round(totalResponseTime / responseCount)
 }
 
-// الحصول على بيانات 7 أيام — single query instead of 7 round-trips
-async function getWeeklyChartData(userId) {
-  const dayNames = ["أح", "إث", "ثل", "أر", "خم", "جم", "سب"]
-
-  const startOfToday = new Date()
-  startOfToday.setHours(0, 0, 0, 0)
-
-  const sevenDaysStart = new Date(startOfToday)
-  sevenDaysStart.setDate(sevenDaysStart.getDate() - 6)
-
+// الحصول على بيانات الرسم البياني حسب الفترة
+async function getPeriodChartData(userId, period, periodStart) {
   const rows = await prisma.conversation.findMany({
     where: {
       userId,
-      createdAt: { gte: sevenDaysStart },
+      createdAt: { gte: periodStart },
       stage: { notIn: ["ARCHIVED"] }
     },
     select: { createdAt: true }
   })
 
-  const counts = Array(7).fill(0)
-  for (const row of rows) {
-    const rowDate = new Date(row.createdAt)
-    rowDate.setHours(0, 0, 0, 0)
-    const diffDays = Math.round((rowDate - sevenDaysStart) / (1000 * 60 * 60 * 24))
-    if (diffDays >= 0 && diffDays < 7) counts[diffDays]++
-  }
+  if (period === "week") {
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const sevenDaysStart = new Date(startOfToday)
+    sevenDaysStart.setDate(sevenDaysStart.getDate() - 6)
+    const counts = Array(7).fill(0)
+    for (const row of rows) {
+      const rowDate = new Date(row.createdAt)
+      rowDate.setHours(0, 0, 0, 0)
+      const diffDays = Math.round((rowDate - sevenDaysStart) / (1000 * 60 * 60 * 24))
+      if (diffDays >= 0 && diffDays < 7) counts[diffDays]++
+    }
+    return { counts, granularity: "day" }
 
-  const days = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    days.push(dayNames[d.getDay()])
-  }
+  } else if (period === "month") {
+    const counts = Array(4).fill(0)
+    const now = Date.now()
+    for (const row of rows) {
+      const diffMs = now - new Date(row.createdAt).getTime()
+      const weeksAgo = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000))
+      if (weeksAgo < 4) counts[3 - weeksAgo]++
+    }
+    return { counts, granularity: "week" }
 
-  return { days, counts }
+  } else {
+    const counts = Array(3).fill(0)
+    const now = new Date()
+    for (const row of rows) {
+      const rowDate = new Date(row.createdAt)
+      const monthDiff =
+        (now.getFullYear() - rowDate.getFullYear()) * 12 +
+        (now.getMonth() - rowDate.getMonth())
+      if (monthDiff >= 0 && monthDiff < 3) counts[2 - monthDiff]++
+    }
+    return { counts, granularity: "month" }
+  }
 }
 
 export async function GET(request) {
@@ -93,27 +105,30 @@ export async function GET(request) {
   if (!user) return unauthorizedResponse()
 
   try {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const { searchParams } = new URL(request.url)
+    const period = searchParams.get("period") || "week"
+    const days = period === "3months" ? 90 : period === "month" ? 30 : 7
+    const periodStart = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
-    // البيانات الأساسية
-    const todayConversations = await prisma.conversation.count({
+    // محادثات الفترة المحددة
+    const weekConversations = await prisma.conversation.count({
       where: {
         userId: user.id,
-        createdAt: { gte: today },
+        createdAt: { gte: periodStart },
         stage: { notIn: ["ARCHIVED"] }
       }
     })
 
-    const todayClosed = await prisma.conversation.findMany({
+    // محادثات مغلقة في الفترة (للإيرادات ونسبة التحويل)
+    const periodClosed = await prisma.conversation.findMany({
       where: {
         userId: user.id,
         stage: "CLOSED",
-        createdAt: { gte: today }
+        createdAt: { gte: periodStart }
       },
       select: { totalAmount: true }
     })
+    const weekRevenue = periodClosed.reduce((sum, c) => sum + (c.totalAmount || 0), 0)
 
     const pitching = await prisma.conversation.count({
       where: {
@@ -126,27 +141,8 @@ export async function GET(request) {
       where: { userId: user.id }
     })
 
-    const weekConversations = await prisma.conversation.count({
-      where: {
-        userId: user.id,
-        createdAt: { gte: sevenDaysAgo },
-        stage: { notIn: ["ARCHIVED"] }
-      }
-    })
-
-    // بيانات إيرادات الأسبوع الكامل (حقيقية 100%)
-    const weekClosed = await prisma.conversation.findMany({
-      where: {
-        userId: user.id,
-        stage: "CLOSED",
-        createdAt: { gte: sevenDaysAgo }
-      },
-      select: { totalAmount: true }
-    })
-    const weekRevenue = weekClosed.reduce((sum, c) => sum + (c.totalAmount || 0), 0)
-
-    // بيانات الرسم البياني
-    const weeklyData = await getWeeklyChartData(user.id)
+    // بيانات الرسم البياني حسب الفترة
+    const periodChartData = await getPeriodChartData(user.id, period, periodStart)
 
     // أسباب الاعتراض - جلب الرسائل ثم تحليلها
     const userConversations = await prisma.conversation.findMany({
@@ -209,7 +205,7 @@ export async function GET(request) {
     const recentCustomers = await prisma.customer.findMany({
       where: {
         userId: user.id,
-        createdAt: { gte: sevenDaysAgo }
+        createdAt: { gte: periodStart }
       },
       select: { ordersCount: true }
     })
@@ -277,23 +273,23 @@ export async function GET(request) {
       select: { name: true, questions: true },
     })
 
-    // الحسابات النهائية
-    const todayRevenue = todayClosed.reduce((sum, c) => sum + (c.totalAmount || 0), 0)
-    const conversionRate = todayConversations > 0
-      ? Math.round((todayClosed.length / todayConversations) * 100)
+    // الحسابات النهائية للفترة
+    const periodRevenue = weekRevenue
+    const conversionRate = weekConversations > 0
+      ? Math.round((periodClosed.length / weekConversations) * 100)
       : 0
 
     return successResponse({
-      todayConversations,
-      todaySales: todayClosed.length,
+      todayConversations: weekConversations,
+      todaySales: periodClosed.length,
       conversionRate,
-      todayRevenue: Math.round(todayRevenue),
+      todayRevenue: Math.round(periodRevenue),
       pitching,
       customers,
       weekConversations,
       weekRevenue: Math.round(weekRevenue),
-      avgOrderValue: todayClosed.length > 0
-        ? Math.round(todayRevenue / todayClosed.length)
+      avgOrderValue: periodClosed.length > 0
+        ? Math.round(periodRevenue / periodClosed.length)
         : 0,
       avgResponseTime: avgResponseTime > 0 ? avgResponseTime : 0,
       satisfactionRate,
@@ -306,8 +302,9 @@ export async function GET(request) {
         objection: stageMap["OBJECTION"] || 0,
         closed:    stageMap["CLOSED"] || 0,
       },
-      weeklyChart: weeklyData.counts,
-      weeklyDays: weeklyData.days,
+      weeklyChart: periodChartData.counts,
+      chartGranularity: periodChartData.granularity,
+      weeklyDays: [],
       productStats: {
         total: totalProducts,
         active: activeProducts,

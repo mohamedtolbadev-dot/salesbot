@@ -15,15 +15,20 @@ export async function GET(request, { params }) {
       where: { id: params.id, userId: user.id },
       include: {
         conversations: {
-          orderBy: { createdAt: "desc" },
-          take: 5,
+          orderBy: { updatedAt: "desc" },
           include: {
             messages: {
               orderBy: { createdAt: "desc" },
               take: 1,
             }
           }
-        }
+        },
+        orders: {
+          orderBy: { createdAt: "desc" },
+        },
+        appointments: {
+          orderBy: { createdAt: "desc" },
+        },
       }
     })
 

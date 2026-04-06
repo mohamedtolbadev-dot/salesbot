@@ -3,12 +3,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { conversationsAPI } from "@/lib/api"
-import { getStageConfig, getStageClassName, getScoreColor, timeAgo, getInitials } from "@/lib/helpers"
+import { getStageConfig, getStageClassName, getScoreColor, timeAgo, getInitials, getToken } from "@/lib/helpers"
 import { cn } from "@/lib/utils"
 import { Search, Download, MessageCircle, Sparkles,
   Users, CheckCircle, AlertCircle, Loader2,
   RefreshCw, ChevronRight, Trash2, AlertTriangle,
-  X, ShoppingBag, Wrench,
+  X, ShoppingBag, Wrench, Send,
 } from "lucide-react"
 import { useLanguage } from "@/contexts/LanguageContext"
 
@@ -293,6 +293,14 @@ function ConversationsContent() {
   const [messagesLoading, setMessagesLoading]   = useState(false)
   const [messagesError, setMessagesError]       = useState(null)
   const [deleteModal, setDeleteModal]           = useState({ open: false, id: null, name: "" })
+  const [agentIsActive, setAgentIsActive]       = useState(true)
+  const [replyText, setReplyText]               = useState("")
+  const [replySending, setReplySending]         = useState(false)
+  const [replyError, setReplyError]             = useState(null)
+  const [newMsgToast, setNewMsgToast]           = useState(null)
+  const prevConvsRef  = useRef(null)
+  const selectedRef   = useRef(null)
+  const toastTimerRef = useRef(null)
 
   const handleTypeChange = useCallback((type) => {
     setConvType(type)
@@ -304,6 +312,31 @@ function ConversationsContent() {
   const handleDeleteConversation = useCallback((id, name) => {
     setDeleteModal({ open: true, id, name })
   }, [])
+
+  const handleManualReply = useCallback(async () => {
+    if (!replyText.trim() || !selected?.id) return
+    try {
+      setReplySending(true)
+      setReplyError(null)
+      const token = getToken()
+      const res = await fetch(`/api/conversations/${selected.id}/reply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ message: replyText.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "فشل الإرسال")
+      setMessages(prev => [...prev, data.data])
+      setReplyText("")
+    } catch (err) {
+      setReplyError(err.message)
+    } finally {
+      setReplySending(false)
+    }
+  }, [replyText, selected?.id])
 
   const confirmDelete = useCallback(async () => {
     const { id } = deleteModal
@@ -327,7 +360,9 @@ function ConversationsContent() {
     try {
       setLoading(true); setError(null)
       const response = await conversationsAPI.getAll({})
-      setConversations(response.data?.conversations || [])
+      const convs = response.data?.conversations || []
+      setConversations(convs)
+      prevConvsRef.current = Object.fromEntries(convs.map(c => [c.id, c.updatedAt]))
     } catch {
       setError("load_error")
     } finally {
@@ -335,7 +370,69 @@ function ConversationsContent() {
     }
   }, [])
 
+  const pollConversations = useCallback(async () => {
+    if (!prevConvsRef.current) return
+    try {
+      const response = await conversationsAPI.getAll({})
+      const newConvs = response.data?.conversations || []
+      for (const conv of newConvs) {
+        const prevUpdatedAt = prevConvsRef.current[conv.id]
+        if (prevUpdatedAt === undefined) continue
+        if (
+          prevUpdatedAt !== conv.updatedAt &&
+          !conv.isRead &&
+          selectedRef.current?.id !== conv.id
+        ) {
+          setNewMsgToast(conv)
+          if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+          toastTimerRef.current = setTimeout(() => setNewMsgToast(null), 8000)
+          break
+        }
+      }
+      prevConvsRef.current = Object.fromEntries(newConvs.map(c => [c.id, c.updatedAt]))
+      setConversations(newConvs)
+    } catch {}
+  }, [])
+
+  const handleToastOpen = useCallback((conv) => {
+    setSelected(conv)
+    setNewMsgToast(null)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+  }, [])
+
+  const handleToastClose = useCallback(() => {
+    setNewMsgToast(null)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+  }, [])
+
   useEffect(() => { fetchConversations() }, [fetchConversations])
+
+  useEffect(() => {
+    const interval = setInterval(pollConversations, 8000)
+    return () => clearInterval(interval)
+  }, [pollConversations])
+
+  useEffect(() => { selectedRef.current = selected }, [selected])
+
+  useEffect(() => {
+    if (!selected?.id) return
+    setNewMsgToast(prev => prev?.id === selected.id ? null : prev)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+  }, [selected?.id])
+
+  useEffect(() => {
+    const fetchAgentStatus = async () => {
+      try {
+        const token = getToken()
+        const res = await fetch("/api/agent", {
+          headers: { "Authorization": `Bearer ${token}` },
+        })
+        const data = await res.json()
+        setAgentIsActive(data.data?.isActive ?? true)
+      } catch {}
+    }
+    fetchAgentStatus()
+  }, [])
 
   // Auto-select from URL ?id= param
   useEffect(() => {
@@ -352,6 +449,8 @@ function ConversationsContent() {
 
   useEffect(() => {
     if (!selected?.id) { setMessages([]); setMessagesError(null); return }
+    setReplyText("")
+    setReplyError(null)
     ;(async () => {
       try {
         setMessagesLoading(true); setMessagesError(null); setMessages([])
@@ -365,6 +464,18 @@ function ConversationsContent() {
       finally { setMessagesLoading(false) }
     })()
   }, [selected?.id])
+
+  useEffect(() => {
+    if (!selected?.id || agentIsActive) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await conversationsAPI.getById(selected.id)
+        const incoming = res.data?.messages || []
+        setMessages(prev => incoming.length > prev.length ? incoming : prev)
+      } catch {}
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [selected?.id, agentIsActive])
 
   const productConvs = useMemo(() =>
     conversations.filter(c => c.stage !== "ARCHIVED" && c.type !== "service"),
@@ -444,7 +555,7 @@ function ConversationsContent() {
               <p className="text-[14px] font-bold text-foreground truncate">{selected.customer?.name}</p>
               <p className="text-[12px] text-muted-foreground">{selected.customer?.phone}</p>
             </div>
-            <span className={cn("text-[12px] font-semibold px-2 py-1 rounded-md border",
+            <span className={cn("text-[12px] font-semibold px-2 py-0.5 rounded-md border",
               getStageClassName(selected.stage, selected.type))}>
               {getStageLabel(selected.stage, selected.type)}
             </span>
@@ -485,11 +596,43 @@ function ConversationsContent() {
                 ))
             }
           </div>
+
+          {/* Manual Reply — mobile */}
+          {!agentIsActive && (
+            <div className="px-3 py-3 border-t border-border shrink-0">
+              <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                <p className="text-[11px] text-amber-700 font-medium">{t('conv.ai_off_manual')}</p>
+              </div>
+              {replyError && (
+                <p className="text-[11px] text-red-500 mb-2 px-1">{replyError}</p>
+              )}
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={replyText}
+                  onChange={e => setReplyText(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleManualReply() } }}
+                  placeholder={t('conv.reply_placeholder')}
+                  rows={2}
+                  maxLength={1000}
+                  className="flex-1 px-3 py-2 bg-secondary border border-border rounded-xl text-[14px] outline-none focus:border-brand-400 transition-colors resize-none leading-relaxed placeholder:text-muted-foreground/50"
+                />
+                <button
+                  onClick={handleManualReply}
+                  disabled={replySending || !replyText.trim()}
+                  className="shrink-0 w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center transition-all hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                  {replySending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground/50 text-left mt-1">{replyText.length}/1000</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-2 px-3 py-3 border-t border-border shrink-0"
             style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
             {[
               { label: t('conv.messages'),  value: `${messages.length}` },
-              { label: t('conv.duration'),  value: timeAgo(selected.createdAt) },
+              { label: t('conv.duration'),  value: timeAgo(selected.createdAt, t) },
               { label: t('conv.order_val'), value: selected.totalAmount ? `${selected.totalAmount}` : "—" },
             ].map(item => (
               <div key={item.label} className="bg-secondary/50 border border-border rounded-lg p-2 text-center">
@@ -511,24 +654,40 @@ function ConversationsContent() {
           unreadCount={unreadCount}
           onDeleteConversation={handleDeleteConversation}
           deleteModal={deleteModal} confirmDelete={confirmDelete} cancelDelete={cancelDelete}
+          agentIsActive={agentIsActive}
+          replyText={replyText} setReplyText={setReplyText}
+          replySending={replySending} replyError={replyError}
+          onManualReply={handleManualReply}
         />
+        {newMsgToast && (
+          <NewMessageToast conv={newMsgToast} onOpen={handleToastOpen} onClose={handleToastClose} />
+        )}
       </>
     )
   }
 
   return (
-    <MainLayout
-      convType={convType} onTypeChange={handleTypeChange}
-      productCount={productConvs.length} serviceCount={serviceConvs.length}
-      stats={stats} filtered={filtered} filter={filter} setFilter={setFilter}
-      search={search} setSearch={setSearch} filterButtons={filterButtons}
-      selected={selected} setSelected={setSelected}
-      messages={messages} messagesLoading={messagesLoading} messagesError={messagesError}
-      onRetryMessages={() => setSelected({ ...selected })}
-      unreadCount={unreadCount}
-      onDeleteConversation={handleDeleteConversation}
-      deleteModal={deleteModal} confirmDelete={confirmDelete} cancelDelete={cancelDelete}
-    />
+    <>
+      <MainLayout
+        convType={convType} onTypeChange={handleTypeChange}
+        productCount={productConvs.length} serviceCount={serviceConvs.length}
+        stats={stats} filtered={filtered} filter={filter} setFilter={setFilter}
+        search={search} setSearch={setSearch} filterButtons={filterButtons}
+        selected={selected} setSelected={setSelected}
+        messages={messages} messagesLoading={messagesLoading} messagesError={messagesError}
+        onRetryMessages={() => setSelected({ ...selected })}
+        unreadCount={unreadCount}
+        onDeleteConversation={handleDeleteConversation}
+        deleteModal={deleteModal} confirmDelete={confirmDelete} cancelDelete={cancelDelete}
+        agentIsActive={agentIsActive}
+        replyText={replyText} setReplyText={setReplyText}
+        replySending={replySending} replyError={replyError}
+        onManualReply={handleManualReply}
+      />
+      {newMsgToast && (
+        <NewMessageToast conv={newMsgToast} onOpen={handleToastOpen} onClose={handleToastClose} />
+      )}
+    </>
   )
 }
 
@@ -541,6 +700,7 @@ function MainLayout({
   onRetryMessages,
   unreadCount, onDeleteConversation,
   deleteModal, confirmDelete, cancelDelete,
+  agentIsActive, replyText, setReplyText, replySending, replyError, onManualReply,
 }) {
   const { t } = useLanguage()
   // ✅ FIX: تعريف getStageLabel هنا لأن MainLayout تستخدمه في الـ map
@@ -709,6 +869,10 @@ function MainLayout({
               messagesError={messagesError}
               onRetryMessages={onRetryMessages}
               convType={convType}
+              agentIsActive={agentIsActive}
+              replyText={replyText} setReplyText={setReplyText}
+              replySending={replySending} replyError={replyError}
+              onManualReply={onManualReply}
             />
           )}
         </div>
@@ -804,7 +968,7 @@ function ConvCard({ conv, stageLabel, stageClassName, scoreColor, isSelected, on
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <span className={cn(
-            "text-[11px] px-1.5 py-0.5 rounded-md border font-semibold shrink-0",
+            "text-[11px] px-1.5 py-0.5 rounded-md border font-bold",
             convType === "product"
               ? "bg-brand-50 text-brand-600 border-brand-200"
               : "bg-brand-100 text-brand-800 border-brand-200"
@@ -839,7 +1003,7 @@ function ConvCard({ conv, stageLabel, stageClassName, scoreColor, isSelected, on
 }
 
 /* ─────────────── Detail Panel ─────────────── */
-function DetailPanel({ selected, messages, messagesLoading, messagesError, onRetryMessages, convType }) {
+function DetailPanel({ selected, messages, messagesLoading, messagesError, onRetryMessages, convType, agentIsActive, replyText, setReplyText, replySending, replyError, onManualReply }) {
   const { t } = useLanguage()
   // ✅ useStageLabel مستدعى على مستوى الـ component مباشرة — Rules of Hooks
   const getStageLabel = useStageLabel()
@@ -888,24 +1052,54 @@ function DetailPanel({ selected, messages, messagesLoading, messagesError, onRet
               إعادة المحاولة
             </button>
           </div>
-        ) : messagesLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 size={22} className="animate-spin text-brand-600" />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-[14px] text-muted-foreground">
-            {t('conv.no_messages')}
-          </div>
-        ) : (
-          messages.map(msg => (
-            <MessageBubble
-              key={msg.id || `${msg.role}-${msg.createdAt}`}
-              msg={msg}
-              customerName={selected.customer?.name}
-            />
-          ))
-        )}
+        ) : messagesLoading
+          ? <div className="flex items-center justify-center h-full">
+              <Loader2 size={22} className="animate-spin text-brand-600" />
+            </div>
+          : messages.length === 0
+          ? <div className="flex items-center justify-center h-full text-[14px] text-muted-foreground">
+              {t('conv.no_messages')}
+            </div>
+          : messages.map(msg => (
+              <MessageBubble
+                key={msg.id || `${msg.role}-${msg.createdAt}`}
+                msg={msg}
+                customerName={selected.customer?.name}
+              />
+            ))
+        }
       </div>
+
+      {/* Manual Reply — desktop */}
+      {agentIsActive === false && (
+        <div className="px-4 py-3 border-t border-border shrink-0">
+          <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+            <p className="text-[11px] text-amber-700 font-medium">{t('conv.ai_off_manual')}</p>
+          </div>
+          {replyError && (
+            <p className="text-[11px] text-red-500 mb-2 px-1">{replyError}</p>
+          )}
+          <div className="flex items-end gap-2">
+            <textarea
+              value={replyText}
+              onChange={e => setReplyText(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onManualReply() } }}
+              placeholder={t('conv.reply_placeholder')}
+              rows={2}
+              maxLength={1000}
+              className="flex-1 px-3 py-2 bg-secondary border border-border rounded-xl text-[14px] outline-none focus:border-brand-400 transition-colors resize-none leading-relaxed placeholder:text-muted-foreground/50"
+            />
+            <button
+              onClick={onManualReply}
+              disabled={replySending || !replyText.trim()}
+              className="shrink-0 w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center transition-all hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+              {replySending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground/50 text-left mt-1">{replyText.length}/1000</p>
+        </div>
+      )}
 
       {/* Footer stats */}
       <div className="px-4 py-3 border-t border-border shrink-0">
@@ -915,7 +1109,7 @@ function DetailPanel({ selected, messages, messagesLoading, messagesError, onRet
             { label: t('conv.duration'), value: timeAgo(selected.createdAt, t) },
             {
               label: convType === "product" ? t('conv.order_val') : t('conv.booking_val'),
-              value: selected.totalAmount ? `${selected.totalAmount}` : "—"
+              value: selected.totalAmount ? `${selected.totalAmount}` : "—",
             },
           ].map(item => (
             <div key={item.label}
@@ -924,6 +1118,84 @@ function DetailPanel({ selected, messages, messagesLoading, messagesError, onRet
               <p className="text-[14px] font-bold text-foreground">{item.value}</p>
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────── New Message Toast ─────────────── */
+function NewMessageToast({ conv, onOpen, onClose }) {
+  const { t } = useLanguage()
+  const getStageLabel = useStageLabel()
+  const stageLabel     = getStageLabel(conv.stage, conv.type)
+  const stageClassName = getStageClassName(conv.stage, conv.type)
+  const scoreColor     = getScoreColor(conv.score || 0)
+  const lastMsg = conv.messages?.[conv.messages.length - 1]?.content
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), 40)
+    return () => clearTimeout(timer)
+  }, [])
+
+  return (
+    <div
+      onClick={() => onOpen(conv)}
+      style={{
+        transform: visible ? "translateY(0)" : "translateY(110%)",
+        opacity: visible ? 1 : 0,
+        transition: "transform 0.38s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s ease",
+      }}
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-60 w-[340px] max-w-[calc(100vw-24px)] bg-card border border-brand-600/25 rounded-2xl shadow-2xl shadow-brand-600/10 cursor-pointer overflow-hidden"
+    >
+      <style>{`
+        @keyframes toast-shrink {
+          from { transform: scaleX(1); }
+          to   { transform: scaleX(0); }
+        }
+      `}</style>
+      <div className="h-[2.5px] bg-brand-600/15 overflow-hidden">
+        <div
+          className="h-full bg-brand-600 origin-left"
+          style={{ animation: "toast-shrink 8s linear forwards" }}
+        />
+      </div>
+      <div className="p-4 flex items-start gap-3">
+        <div className="relative shrink-0">
+          <div className="absolute -inset-[2px] rounded-full bg-brand-600/20" />
+          <div className="w-11 h-11 rounded-full bg-brand-600 flex items-center justify-center font-bold text-white text-sm relative">
+            {getInitials(conv.customer?.name)}
+          </div>
+          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-brand-600 border-2 border-card animate-pulse" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[14px] font-bold text-foreground truncate">{conv.customer?.name}</span>
+              <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(conv.updatedAt, t)}</span>
+            </div>
+            <button
+              onClick={e => { e.stopPropagation(); onClose() }}
+              className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-0.5">
+              <X size={14} />
+            </button>
+          </div>
+          <span className="text-[12px] text-brand-600 font-semibold">{t('conv.new_message')}</span>
+          {lastMsg && (
+            <p className="text-[13px] text-muted-foreground truncate mt-0.5">{lastMsg}</p>
+          )}
+          <div className="flex items-center gap-2 mt-2">
+            <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded-md border", stageClassName)}>
+              {stageLabel}
+            </span>
+            <div className="flex items-center gap-1">
+              <div className="w-10 h-[3px] bg-border rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${conv.score || 0}%`, backgroundColor: scoreColor }} />
+              </div>
+              <span className="text-[11px] font-bold tabular-nums" style={{ color: scoreColor }}>{conv.score || 0}%</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -38,6 +38,8 @@ export async function PUT(request, { params }) {
     })
     if (!product) return errorResponse("المنتج غير موجود", 404)
 
+    const LOW_STOCK_THRESHOLD = 5
+
     const updated = await prisma.product.update({
       where: { id },
       data: {
@@ -61,6 +63,30 @@ export async function PUT(request, { params }) {
         }),
       }
     })
+
+    const prevStock = product.stock
+    const newStock  = updated.stock
+    const prodName  = updated.name
+
+    if (prevStock > 0 && newStock === 0) {
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: "SYSTEM",
+          title: `fr:Rupture de stock: ${prodName}||ar:نفاذ المخزون: ${prodName}`,
+          message: `fr:Le stock du produit "${prodName}" est épuisé. Veuillez réapprovisionner.||ar:نفد مخزون "${prodName}" بالكامل! يرجى إعادة التخزين في أقرب وقت.`,
+        }
+      })
+    } else if (prevStock > LOW_STOCK_THRESHOLD && newStock > 0 && newStock <= LOW_STOCK_THRESHOLD) {
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: "SYSTEM",
+          title: `fr:Alerte stock: ${prodName}||ar:تنبيه مخزون: ${prodName}`,
+          message: `fr:Il reste ${newStock} unité(s) de "${prodName}".||ar:المخزون المتبقي من "${prodName}" هو ${newStock} وحدة فقط.`,
+        }
+      })
+    }
 
     return successResponse(updated)
   } catch (error) {

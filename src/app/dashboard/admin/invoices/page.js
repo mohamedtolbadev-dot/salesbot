@@ -485,9 +485,13 @@ export default function AdminInvoicesPage() {
 
   async function handleSend(id) {
     try {
-      await adminAPI.sendInvoice(id)
+      const res = await adminAPI.sendInvoice(id, locale)
       setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, whatsappSent: true } : inv))
-      showToast(t('admin.toast_sent'))
+      if (res?.pdfSent === false) {
+        showToast(t('admin.toast_sent_no_pdf'), "warn")
+      } else {
+        showToast(t('admin.toast_sent'))
+      }
     } catch (err) {
       const msg = err?.message ?? ""
       showToast(

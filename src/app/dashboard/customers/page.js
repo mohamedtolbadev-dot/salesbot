@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { customersAPI, statsAPI, conversationsAPI } from "@/lib/api"
 import { formatAmount, getCustomerTagConfig, timeAgo } from "@/lib/helpers"
 import { cn } from "@/lib/utils"
@@ -513,6 +514,7 @@ export default function CustomersPage() {
 /* ─────────────── Mobile Card ─────────────── */
 function MobileCustomerCard({ customer, tagConfig, delay }) {
   const { t } = useLanguage()
+  const router = useRouter()
   const [visible, setVisible] = useState(false)
   useEffect(() => {
     const timer = setTimeout(() => setVisible(true), delay)
@@ -521,7 +523,8 @@ function MobileCustomerCard({ customer, tagConfig, delay }) {
 
   return (
     <div
-      className="bg-card border border-border rounded-xl p-4 flex items-center gap-3 hover:border-brand-300 hover:shadow-md transition-all duration-200"
+      onClick={() => router.push(`/dashboard/customers/${customer.id}`)}
+      className="bg-card border border-border rounded-xl p-4 flex items-center gap-3 hover:border-brand-300 hover:shadow-md transition-all duration-200 cursor-pointer"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(8px)",
@@ -554,6 +557,7 @@ function MobileCustomerCard({ customer, tagConfig, delay }) {
 /* ─────────────── Desktop Row ─────────────── */
 function DesktopCustomerRow({ customer, tagConfig, delay }) {
   const { t } = useLanguage()
+  const router = useRouter()
   const [visible, setVisible] = useState(false)
   useEffect(() => {
     const timer = setTimeout(() => setVisible(true), delay)
@@ -562,6 +566,7 @@ function DesktopCustomerRow({ customer, tagConfig, delay }) {
 
   return (
     <tr
+      onClick={() => router.push(`/dashboard/customers/${customer.id}`)}
       className="border-t border-border hover:bg-secondary/40 cursor-pointer transition-colors duration-150 group"
       style={{ opacity: visible ? 1 : 0, transition: "opacity 0.3s ease" }}
     >
