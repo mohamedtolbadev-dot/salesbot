@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import {
   Search, Users, TrendingUp, Crown,
   Sparkles, Star,
-  AlertCircle, RefreshCw,
+  AlertCircle, RefreshCw, Trash2, X,
 } from "lucide-react"
 import { useLanguage } from "@/contexts/LanguageContext"
 
@@ -230,8 +230,24 @@ export default function CustomersPage() {
   const [tagFilter, setTagFilter] = useState("all")
   const [search, setSearch]       = useState("")
   const [conversations, setConversations] = useState([])
+  const [deleteModal, setDeleteModal] = useState({ open: false, customer: null })
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => { fetchData() }, [search])
+
+  async function handleDelete() {
+    if (!deleteModal.customer) return
+    setDeleting(true)
+    try {
+      await customersAPI.delete(deleteModal.customer.id)
+      setCustomers(prev => prev.filter(c => c.id !== deleteModal.customer.id))
+      setDeleteModal({ open: false, customer: null })
+    } catch (err) {
+      console.error("Delete customer error:", err)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   async function fetchConversations() {
     try {
@@ -478,7 +494,7 @@ export default function CustomersPage() {
             {filtered.map((customer, idx) => {
               const tagConfig = getCustomerTagConfig(customer.tag)
               return (
-                <MobileCustomerCard key={customer.id} customer={customer} tagConfig={tagConfig} delay={idx * 40} />
+                <MobileCustomerCard key={customer.id} customer={customer} tagConfig={tagConfig} delay={idx * 40} onDelete={() => setDeleteModal({ open: true, customer })} />
               )
             })}
           </div>
@@ -499,7 +515,7 @@ export default function CustomersPage() {
                 {filtered.map((customer, idx) => {
                   const tagConfig = getCustomerTagConfig(customer.tag)
                   return (
-                    <DesktopCustomerRow key={customer.id} customer={customer} tagConfig={tagConfig} delay={idx * 30} />
+                    <DesktopCustomerRow key={customer.id} customer={customer} tagConfig={tagConfig} delay={idx * 30} onDelete={() => setDeleteModal({ open: true, customer })} />
                   )
                 })}
               </tbody>
@@ -507,12 +523,45 @@ export default function CustomersPage() {
           </div>
         </>
       )}
+      {/* ── Delete Confirm Modal ── */}
+      {deleteModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => !deleting && setDeleteModal({ open: false, customer: null })}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div className="relative bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            <button onClick={() => !deleting && setDeleteModal({ open: false, customer: null })} className="absolute top-4 left-4 text-muted-foreground hover:text-foreground transition-colors">
+              <X size={18} />
+            </button>
+            <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+              <Trash2 size={22} className="text-red-500" />
+            </div>
+            <h3 className="text-[16px] font-bold text-foreground text-center mb-1">{t('admin.confirm_delete_title')}</h3>
+            <p className="text-[13px] text-muted-foreground text-center mb-5">
+              {deleteModal.customer?.name}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteModal({ open: false, customer: null })}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 border border-border rounded-xl text-[14px] font-medium hover:bg-secondary transition-colors disabled:opacity-50"
+              >{t('common.cancel')}</button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-[14px] font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {deleting ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Trash2 size={14} />}
+                {t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
 /* ─────────────── Mobile Card ─────────────── */
-function MobileCustomerCard({ customer, tagConfig, delay }) {
+function MobileCustomerCard({ customer, tagConfig, delay, onDelete }) {
   const { t } = useLanguage()
   const router = useRouter()
   const [visible, setVisible] = useState(false)
@@ -535,9 +584,14 @@ function MobileCustomerCard({ customer, tagConfig, delay }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-0.5">
           <p className="text-[14px] font-bold text-foreground truncate">{customer.name}</p>
-          <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0", tagConfig.className)}>
-            {tagConfig.label}
-          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded-md border", tagConfig.className)}>
+              {tagConfig.label}
+            </span>
+            <button onClick={e => { e.stopPropagation(); onDelete() }} className="p-1 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+              <Trash2 size={13} />
+            </button>
+          </div>
         </div>
         <p className="text-[12px] text-muted-foreground">{customer.phone}</p>
         <div className="flex items-center gap-3 mt-1">
@@ -555,7 +609,7 @@ function MobileCustomerCard({ customer, tagConfig, delay }) {
 }
 
 /* ─────────────── Desktop Row ─────────────── */
-function DesktopCustomerRow({ customer, tagConfig, delay }) {
+function DesktopCustomerRow({ customer, tagConfig, delay, onDelete }) {
   const { t } = useLanguage()
   const router = useRouter()
   const [visible, setVisible] = useState(false)
@@ -589,9 +643,14 @@ function DesktopCustomerRow({ customer, tagConfig, delay }) {
         {customer.lastSeen ? timeAgo(customer.lastSeen) : "—"}
       </td>
       <td className="px-4 py-3.5">
-        <span className={cn("text-[12px] font-semibold px-2 py-0.5 rounded-md border", tagConfig.className)}>
-          {tagConfig.label}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={cn("text-[12px] font-semibold px-2 py-0.5 rounded-md border", tagConfig.className)}>
+            {tagConfig.label}
+          </span>
+          <button onClick={e => { e.stopPropagation(); onDelete() }} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-150">
+            <Trash2 size={13} />
+          </button>
+        </div>
       </td>
     </tr>
   )

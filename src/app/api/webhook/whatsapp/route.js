@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/prisma"
 import {
   parseAllIncomingMessages,
-  sendWhatsAppMessage
+  sendWhatsAppMessage,
+  transcribeWhatsAppAudio
 } from "@/lib/whatsapp"
 import { processIncomingMessage } from "@/lib/aiAgent"
 import { sanitizeInput } from "@/lib/helpers"
@@ -198,7 +199,29 @@ export async function POST(request) {
 
         // ✅ معالجة الرسالة + توليد رد AI
         console.log(`🤖 [${incoming.from}] Calling processIncomingMessage...`)
-        
+
+        // 🎤 تحويل الرسالة الصوتية لنص عبر Whisper
+        if (incoming.type === "audio" && incoming.audioId) {
+          console.log(`🎤 [${incoming.from}] تحويل رسالة صوتية...`)
+          const transcription = await transcribeWhatsAppAudio({
+            token: agent.whatsappToken,
+            audioId: incoming.audioId,
+          })
+          if (transcription) {
+            incoming.text = transcription
+            console.log(`✅ [${incoming.from}] تم تحويل الصوت: "${transcription.substring(0, 60)}..."`)
+          } else {
+            console.log(`⚠️ [${incoming.from}] OPENAI_API_KEY غير مضبوط — طلب الكتابة`)
+            await sendWhatsAppMessage({
+              phoneId: agent.whatsappPhoneId,
+              token: agent.whatsappToken,
+              to: incoming.from,
+              message: "عذراً ما قدرتش نسمع الرسالة الصوتية 🎤، ممكن تكتب رسالتك؟ 😊",
+            })
+            return
+          }
+        }
+
         // ✅ تنظيف الرسالة — منع Prompt Injection
         const sanitizedText = sanitizeInput(incoming.text)
         if (!sanitizedText) {

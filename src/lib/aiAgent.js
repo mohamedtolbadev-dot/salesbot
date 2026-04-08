@@ -148,12 +148,14 @@ export async function generateStatusUpdateMessage({
           "X-Title": "Wakil.ma",
         },
         body: JSON.stringify({
+          // ✅ FIX: استخدام GPT-4o Mini عبر OpenRouter
           model: "openai/gpt-4o-mini",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: `اكتب رسالة إشعار للزبون بحالة موعده الجديدة: ${statusInfo.label}` },
           ],
-          max_tokens: 200,
+          // ✅ FIX: زيادة max_tokens لتجنب الردود الناقصة
+          max_tokens: 400,
           temperature: 0.7,
         }),
       }
@@ -405,23 +407,48 @@ function extractQuantityFromMessages(allMessages) {
     "خمسة": 5,
   }
 
-  // رقمي: "بغيت 3" أو "3 حبات"
-  const numericMatch = allMessages.match(
-    /(?:بغيت|اريد|نبغي|عندي|خود|اعطيني)\s*(\d+)|(\d+)\s*(?:حبة|حبات|قطعة|قطع|وحدة|وحدات|pieces?)/i
-  )
-  if (numericMatch) {
-    const qty = parseInt(numericMatch[1] || numericMatch[2], 10)
-    if (qty >= 1 && qty <= 100) {
-      console.log(`🔢 [extractQuantity] Numeric match: ${qty}`)
-      return qty
+  // ✅ [FIX] أولاً: ابحث عن الكمية في سياق فعل الشراء فقط
+  const buyContext = /(?:بغيت|اريد|نبغي|خود|اعطيني|طلب)\s+(\S+)/i
+  const contextMatch = allMessages.match(buyContext)
+  if (contextMatch) {
+    const afterBuy = contextMatch[1]
+    for (const [word, qty] of Object.entries(numberWords)) {
+      if (afterBuy.includes(word)) {
+        console.log(`🔢 [extractQuantity] Buy-context word: "${word}" = ${qty}`)
+        return qty
+      }
+    }
+    const num = parseInt(afterBuy, 10)
+    if (!isNaN(num) && num >= 1 && num <= 100) {
+      console.log(`🔢 [extractQuantity] Buy-context numeric: ${num}`)
+      return num
     }
   }
 
-  // كلمات: "جوج" / "تلاتة" ...
-  for (const [word, qty] of Object.entries(numberWords)) {
-    if (allMessages.includes(word)) {
-      console.log(`🔢 [extractQuantity] Word match: "${word}" = ${qty}`)
+  // رقمي صريح: "بغيت 3" أو "3 حبات" — مع التحقق من سياق الشراء
+  const numericMatch = allMessages.match(
+    /(?:بغيت|اريد|نبغي|خود|اعطيني|طلب|نحتاج|ناخذ)\s*(?:حبة|حبات|قطعة|قطع|وحدة|وحدات|وحده|مع)?\s*(\d+)|(\d+)\s*(?:حبة|حبات|قطعة|قطع|وحدة|وحدات|pieces?)/i
+  )
+  if (numericMatch) {
+    const qty = parseInt(numericMatch[1] || numericMatch[2], 10)
+    // ✅ [FIX] ما نعتبرش رقم كبير (95-99) ككمية — غالباً يكون مخزون أو سعر
+    if (qty >= 1 && qty <= 20) {
+      console.log(`🔢 [extractQuantity] Numeric match: ${qty}`)
       return qty
+    }
+    if (qty > 20 && qty <= 100) {
+      console.log(`⚠️ [extractQuantity] Ignoring suspicious quantity: ${qty} (likely stock/salary reference)`)
+    }
+  }
+
+  // ✅ [FIX] كلمات العدد فقط في جمل الشراء (تجنب "جوج أيام" = 2)
+  const buySegments = allMessages.match(/(?:بغيت|اريد|نبغي|خود|اعطيني|طلب)[^.،\n]{0,30}/gi) || []
+  for (const seg of buySegments) {
+    for (const [word, qty] of Object.entries(numberWords)) {
+      if (seg.includes(word)) {
+        console.log(`🔢 [extractQuantity] Segment word: "${word}" = ${qty}`)
+        return qty
+      }
     }
   }
 
@@ -473,131 +500,165 @@ function extractAddressFromMessages(allMessages) {
       }
     }
   }
-  
   return null
 }
-function buildSystemPrompt(agent, items, objectionReplies, selectedItem, isService = false, customerHistory = null, appointmentsHistory = null, ordersHistory = null) {
+
+// ✅ FIX: Prompt جديد — شخصية حية بدل قواعد روبوتية
+function buildSystemPrompt(agent, items, objectionReplies, selectedItem, isService = false, customerHistory = null, appointmentsHistory = null, ordersHistory = null, currentStage = null, customerName = null, customerTag = null) {
   const itemTypeLabel = isService ? "الخدمات" : "المنتجات"
   
   let itemsList
   let hasImages = false
+  let stockWarning = ""
+  
   if (selectedItem) {
     const images = parseImages(selectedItem.images)
     hasImages = images.length > 0
     const durationInfo = isService && selectedItem.duration 
-      ? ` — المدة: ${selectedItem.duration} دقيقة` 
+      ? ` — ${selectedItem.duration} دقيقة` 
       : ""
-    itemsList = `- ${selectedItem.name}: ${selectedItem.price} درهم${durationInfo} — ${selectedItem.description || ""}`
-    if (hasImages) {
-      itemsList += `\n- الصور المتاحة: ${images.length} صورة`
-    }
+    // ✅ FIX: إضافة معلومات المخزون للـ AI
+    const stockInfo = !isService && selectedItem.stock !== undefined && selectedItem.stock !== null
+      ? (selectedItem.stock > 0 ? ` (المخزون: ${selectedItem.stock})` : ` ⚠️ نفد من المخزون`)
+      : ""
+    stockWarning = !isService && selectedItem.stock !== undefined && selectedItem.stock <= 0
+    itemsList = `- ${selectedItem.name}: ${selectedItem.price} درهم${durationInfo}${stockInfo}`
+    if (hasImages) itemsList += `\n- ${images.length} صورة متوفرة`
   } else {
     const allImages = items.filter(p => p.isActive).flatMap(p => parseImages(p.images))
     hasImages = allImages.length > 0
     itemsList = items
       .filter(p => p.isActive)
       .map(p => {
-        const durationInfo = isService && p.duration ? ` — المدة: ${p.duration} دقيقة` : ""
-        const imgs = parseImages(p.images)
-        return `- ${p.name}: ${p.price} درهم${durationInfo} — ${p.description || ""}${imgs.length > 0 ? ` (${imgs.length} صورة)` : ""}`
+        const durationInfo = isService && p.duration ? ` — ${p.duration} دقيقة` : ""
+        const stockInfo = !isService && p.stock !== undefined && p.stock !== null
+          ? (p.stock > 0 ? ` (المخزون: ${p.stock})` : ` ⚠️ نفد`)
+          : ""
+        return `- ${p.name}: ${p.price} درهم${durationInfo}${stockInfo}`
       })
       .join("\n")
   }
 
   const objectionsList = objectionReplies
-    .map(o => `- عند "${o.trigger}" قل: "${o.reply}"`)
+    .map(o => `"${o.trigger}" → رد: "${o.reply}"`)
     .join("\n")
 
   const confirmTag = isService ? "[BOOKING_CONFIRMED]" : "[ORDER_CONFIRMED]"
+  const lang = agent.language === "darija" ? "darija" : agent.language === "french" ? "french" : "arabic"
 
-  return `أنت ${agent.name}، ${isService ? "مساعد ذكي لحجز الخدمات" : "بائع ذكي للمتجر"}.
+  // ✅ [FIX] تكامل التعليمات المخصصة — إذا كان المستخدم كتب تعليمات خاصة، نستعملها كأولوية
+  const customInstructions = agent.instructions?.trim()
+  
+  const personalities = {
+    darija: {
+      intro: customInstructions ? `أنت ${agent.name} — خبير مبيعات ذكي على واتساب.
+${customInstructions}
 
-${appointmentsHistory ? `
-📅 مواعيد الزبون الحالية:
-${appointmentsHistory}
-
-قواعد مهمة بخصوص المواعيد:
-- إذا سأل الزبون عن حالة حجزه، أجب بناءً على البيانات أعلاه
-- إذا كان لديه موعد مؤكد، ذكر له التاريخ والوقت
-- إذا كان موعده في انتظار التأكيد، اطلب منه التأكيد
-- لا تطلب تفاصيل (تاريخ، وقت) إذا كانت موجودة بالفعل` : ""}
-
-🔖 أوامر إجبارية للنظام (يجب اتباعها دائماً):
-
-1️⃣ في نهاية كل ردك، ضع tag المرحلة المناسبة:
-[STAGE:GREETING] → عند الترحيب الأول
-[STAGE:DISCOVERY] → عند فهم حاجة الزبون
-[STAGE:PITCHING] → عند تقديم الخدمة/المنتج
-[STAGE:OBJECTION] → عند تردد الزبون أو اعتراضه
-[STAGE:CLOSING] → عند جمع بيانات الحجز/الطلب
-[STAGE:CLOSED] → بعد التأكيد النهائي
-
-2️⃣ عندما يؤكد الزبون الحجز النهائي، أضف: ${confirmTag}
-
-3️⃣ ${hasImages ? "إذا طلب الزبون صور، أضف في نهاية ردك: [SEND_IMAGES]" : "لا توجد صور متاحة للمنتجات حالياً — إذا طلب الزبون صور، أعتذر له بلطف وأخبره أن الصور ستكون متاحة قريباً. لا تضف [SEND_IMAGES]"}
-
-⚠️ لا ترسل رداً بدون [STAGE:xxx]
-
----
-
-تعليمات خاصة (اتبعها بشكل أساسي):
-${agent.instructions || "كن ودوداً ومفيداً"}
-
----
-
-معلومات إضافية للسياق:
-
-مجال المتجر: ${agent.domain}
-أسلوبك: ${
-  agent.style === "friendly" ? "ودود وحنون" :
-  agent.style === "formal"   ? "رسمي ومحترف" :
-                               "مقنع وحازم"
-}
-لغة التواصل: ${
-  agent.language === "darija" ? "الدارجة المغربية" :
-  agent.language === "french" ? "الفرنسية" :
-                                "العربية الفصحى"
-}
-
-${itemTypeLabel} المتاحة:
-${itemsList || `لا ${itemTypeLabel} متاحة حالياً`}
-
-ردود الاعتراض التلقائية (استخدمها فقط إذا طابق الاعتراض):
-${objectionsList || "تعامل مع الاعتراضات بأسلوبك"}
-
-قواعد عامة:
-- سؤال واحد فقط في كل رسالة
-- لا تذكر أنك AI
-- إذا أعطى الزبون معلومة مطلوبة (تاريخ، وقت، اسم)، لا تعيد السؤال عنها
-- إذا أراد الزبون شراء منتج، اسأله عن الكمية المطلوبة قبل التأكيد النهائي
-
-مثال على رد صحيح:
-"مرحباً! كيف نقدر نساعدك؟ 😊
-[STAGE:GREETING]"
-
-مثال على رد تأكيد:
-"تمام 👍 تم تأكيد الحجز!
-📅 التاريخ: [التاريخ]
-⏰ الوقت: [الوقت]
+⚠️ إذا نفد المنتج (stock = 0): قول "واه معلبالي هاد المنتج sold out دابا 😅" — ما تبيعش حاجة ما عندكش!` : `أنت ${agent.name} — حرايفي وبائع مغربي ناضي في واتساب.
+شخصيتك: ولد الشعب، مطور، كايعرف يبيع ويشري، وقريب من الكليان.
+تهضر دارجة حرة ديال ولاد البلاد (بلا بروتوكول، بلا رسميات خاوية).
+هدفك: تجمع المعلومات (السلعة + شحال + العنوان) وتدوز الـ Confirmation في أسرع وقت.
+⚠️ إذا نفد المنتج (stock = 0): قول "واه معلبالي هاد المنتج sold out دابا 😅" — ما تبيعش حاجة ما عندكش!`,
+      whoAreYou: `أنا ${agent.name} 😊، هاني معاك، شنو حب الخاطر؟`,
+      robotReply: `والو خويا، أنا غير ${agent.name} اللي معاك 😄`,
+      summaryProduct: `صافي ناضي 👌 ها الخلاصة:
+📦 [المنتج] × [العدد]
+📍 [فين]
+💰 [المجموع] درهم
+واش نأكدو؟`,
+      summaryService: `صافي مزيان 👌 هاهو الحجز:
+📋 [الخدمة]
+📅 [النهار]
+⏰ [الوقت]
+نأكدوه؟`,
+      confirmProduct: `ناضي! الطلب ديالك داز 🚀
 ${confirmTag}
-[STAGE:CLOSED]”
+[STAGE:CLOSED]`,
+      confirmService: `الحجز ديالك تأكد 🎉 مرحبا بيك!
+${confirmTag}
+[STAGE:CLOSED]`,
+    },
+    french: {
+      intro: `Tu es ${agent.name} — vendeur expert sur WhatsApp.
+Style: dynamique, malin, confiant, proche du client.
+Tu parles français naturel comme dans une vraie conversation WhatsApp.
+Objectif: confirmer la commande en minimum de messages.`,
+      whoAreYou: `C'est ${agent.name} 😊 je peux t'aider avec quoi?`,
+      robotReply: `Non c'est ${agent.name} 😄`,
+      summaryProduct: `Top 👌
+📦 [Produit] × [Qté]
+📍 [Adresse]
+💰 [Total] DH
+On valide?`,
+      summaryService: `Ça marche 👌
+📋 [Service]
+📅 [Date]
+⏰ [Heure]
+On confirme?`,
+      confirmProduct: `Commande reçue 🎉 On t'envoie ça vite!
+${confirmTag}
+[STAGE:CLOSED]`,
+      confirmService: `C'est réservé 🎉 À bientôt!
+${confirmTag}
+[STAGE:CLOSED]`,
+    },
+    arabic: {
+      intro: `أنت ${agent.name} — بائع خبير على واتساب.
+شخصيتك: نشيط، ذكي، واثق، قريب من الزبون.
+تتكلم عربية بسيطة وعفوية كأي شخص على واتساب.
+هدفك: تأكيد الطلب بأقل رسائل ممكن.`,
+      whoAreYou: `أنا ${agent.name} 😊 بشو ما بدك أساعدك؟`,
+      robotReply: `لا، أنا ${agent.name} 😄`,
+      summaryProduct: `من عيوني 👌
+📦 [المنتج] × [الكمية]
+📍 [العنوان]
+💰 [المجموع] درهم
+نعتمد؟`,
+      summaryService: `تمام 👌
+📋 [الخدمة]
+📅 [التاريخ]
+⏰ [الوقت]
+نعتمد؟`,
+      confirmProduct: `أبشر! رح يوصلك بأقرب 🎉
+${confirmTag}
+[STAGE:CLOSED]`,
+      confirmService: `تم تأكيد الحجز 🎉
+${confirmTag}
+[STAGE:CLOSED]`,
+    }
+  }
 
-${ordersHistory ? `
-📦 طلبيات الزبون:
-${ordersHistory}
+  const p = personalities[lang]
 
-إذا سأل الزبون عن طلبيته، أجبه بناءً على هذه البيانات.
-إذا كانت الطلبية مشحونة، أخبره برقم التتبع إن وجد.` : ""}
+  return `${p.intro}
 
-${customerHistory ? `
-تاريخ الزبون السابق:
-${customerHistory}
+${itemsList ? `المنتجات/الخدمات المتاحة:\n${itemsList}\n` : ""}
+${objectionsList ? `\n═══ ردود الاعتراضات ═══\n${objectionsList}\n` : ""}
+${customerHistory ? `\n═══ تاريخ الزبون ═══\n${customerHistory}\n` : ""}
 
-قواعد إضافية بخصوص التاريخ:
-- إذا اشترى سابقاً، رحب به كزبون قديم
-- لا تعرض نفس المنتج بنفس الطريقة
-- يمكنك اقتراح منتجات مكملة
-- إذا سأل عن طلب سابق، أخبره أنك ستتحقق` : ""}`
+═══ هويتك إذا سُئلت ═══
+"من أنت؟" → ${p.whoAreYou}
+"هل أنت روبوت/AI؟" → ${p.robotReply}
+
+═══ هدفك ═══
+${isService 
+  ? "تأكيد الحجز بأقل رسائل ممكن: الخدمة + التاريخ + الوقت = ملخص → تأكيد"
+  : "تأكيد الطلبية بأقل رسائل ممكن: المنتج + الكمية + العنوان = ملخص → تأكيد"}
+
+═══ نموذج الملخص والتأكيد ═══
+${isService ? p.summaryService : p.summaryProduct}
+
+عند الموافقة (نعم/واخا/تمام/ok):
+${isService ? p.confirmService : p.confirmProduct}
+
+═══ قواعد تقنية فقط ═══
+- 1-3 أسطر في كل رد — لا أكثر
+- سؤال واحد فقط في كل رسالة  
+- لا تأكيد بدون ملخص أولاً
+- لا ملخص بدون عنوان (mode: product)
+- كل رد ينتهي بـ [STAGE:xxx]
+${hasImages ? "- أضف [SEND_IMAGES] إذا طلب صور\n" : ""}- ${confirmTag} فقط بعد موافقة الزبون على الملخص
+${currentStage && currentStage !== "GREETING" ? `\nالمرحلة الحالية: ${currentStage} ← تابع منها مباشرة` : ""}`
 }
 
 const SCORE_MAP = {
@@ -621,6 +682,9 @@ export async function generateAIReply({
   customerHistory = null,
   appointmentsHistory = null,
   ordersHistory = null,
+  currentStage = null,
+  customerName = null,
+  customerTag = null,
 }) {
   let attempts = 0
   const maxAttempts = 2
@@ -630,8 +694,14 @@ export async function generateAIReply({
     
     try {
       const systemPrompt = buildSystemPrompt(
-        agent, items, objectionReplies, selectedItem, isService, customerHistory, appointmentsHistory, ordersHistory
+        agent, items, objectionReplies, selectedItem, isService, customerHistory, appointmentsHistory, ordersHistory, currentStage, customerName, customerTag
       )
+
+      // ✅ [DEBUG] Log when custom instructions are being used
+      if (agent.instructions?.trim()) {
+        console.log(`🎯 [generateAIReply] Using custom instructions for agent: ${agent.name}`)
+        console.log(`📝 [generateAIReply] Instructions preview: "${agent.instructions.substring(0, 100)}..."`)
+      }
 
       const messages = [
         ...conversationHistory.map(msg => ({
@@ -652,12 +722,14 @@ export async function generateAIReply({
             "X-Title": "wakil.ma",
           },
           body: JSON.stringify({
+            // ✅ FIX: استخدام GPT-4o Mini عبر OpenRouter
             model: "openai/gpt-4o-mini",
             messages: [
               { role: "system", content: systemPrompt },
               ...messages,
             ],
-            max_tokens: 500,
+            // ✅ FIX: زيادة max_tokens لتجنب الردود الناقصة
+            max_tokens: 800,
             temperature: 0.7,
           }),
         }
@@ -678,6 +750,8 @@ export async function generateAIReply({
           reply: "عذراً، حدث خطأ. حاول مرة أخرى 😊",
           stage: null,
           orderConfirmed: false,
+          cancelOrder: false,
+          cancelAppointment: false,
         }
       }
 
@@ -693,7 +767,7 @@ export async function generateAIReply({
         
         if (userLower.includes("غدا") || userLower.includes("اليوم") || 
             userLower.includes("الساعة") || userLower.includes("مع") ||
-            userLower.match(/\d{1,2}:\d{2}/) || userLower.match(/\d+/)) {
+            userLower.match(/\d{1,2}:\d{2}/)) {
           stage = "CLOSING"
         }
         else if (userLower.includes("نعم") || userLower.includes("أكد") || 
@@ -714,14 +788,23 @@ export async function generateAIReply({
       console.log(`🤖 [generateAIReply] orderConfirmed check: isService=${isService}, confirmTag=${confirmTag}`)
       console.log(`🤖 [generateAIReply] Initial orderConfirmed=${orderConfirmed}, stage=${stage}`)
       
-      // ✅ [FIX] المشكل 1: اكتشاف التأكيد الخاطئ - فقط في مرحلة CLOSING
+      // ✅ [FIX] تأكيد الطلب — يشترط أن الـ Agent أرسل ملخصاً فعلاً قبل قبول كلمة التأكيد
       if (!orderConfirmed && stage === "CLOSING") {
         const userLower = userMessage.toLowerCase()
         const confirmWords = ["نعم", "أكد", "تمام", "واخا", "يلاه", "موافق", "بالصح", "صحيح", "آسفي", "حسن", "مزيان", "اوك", "ok"]
-        if (confirmWords.some(w => userLower.includes(w))) {
+        const lastAgentMsg = conversationHistory
+          .filter(m => m.role === "AGENT")
+          .slice(-1)[0]?.content || ""
+        const summaryIndicators = isService
+          ? ["📋", "📅", "⏰", "نأكد", "نأكدوه", "On confirme", "نعتمد"]
+          : ["📦", "📍", "💰", "نأكدو", "On valide", "نعتمد", "درهم"]
+        const agentSentSummary = summaryIndicators.some(s => lastAgentMsg.includes(s))
+        if (confirmWords.some(w => userLower.includes(w)) && agentSentSummary) {
           orderConfirmed = true
           reply = reply + "\n" + confirmTag + "\n[STAGE:CLOSED]"
-          console.log(`✅ [FIX] اكتشاف التأكيد: تمام في مرحلة CLOSING - orderConfirmed=true`)
+          console.log(`✅ [FIX] تأكيد بعد ملخص — orderConfirmed=true`)
+        } else if (confirmWords.some(w => userLower.includes(w)) && !agentSentSummary) {
+          console.log(`⚠️ [FIX] كلمة تأكيد بدون ملخص — تجاهل`)
         }
       }
       
@@ -752,12 +835,17 @@ export async function generateAIReply({
       }
 
       const sendImages = /\[SEND[_ ]IMAGES?\]/i.test(reply)
+      const cancelOrder = reply.includes("[CANCEL_ORDER]")
+      const cancelAppointment = reply.includes("[CANCEL_APPOINTMENT]")
 
+      // ✅ FIX: إصلاح cleanReply لإضافة \n? قبل الـ tags لتجنب قطع جزء من النص
       const cleanReply = reply
-        .replace(/\[STAGE:\w+\]/g, "")
-        .replace(/\[ORDER_CONFIRMED\]/g, "")
-        .replace(/\[BOOKING_CONFIRMED\]/g, "")
-        .replace(/\[SEND[_ ]IMAGES?\]/gi, "")
+        .replace(/\n?\[STAGE:\w+\]/g, "")
+        .replace(/\n?\[ORDER_CONFIRMED\]/g, "")
+        .replace(/\n?\[BOOKING_CONFIRMED\]/g, "")
+        .replace(/\n?\[SEND[_ ]IMAGES?\]/gi, "")
+        .replace(/\n?\[CANCEL_ORDER\]/g, "")
+        .replace(/\n?\[CANCEL_APPOINTMENT\]/g, "")
         .trim()
 
       return {
@@ -766,6 +854,8 @@ export async function generateAIReply({
         score: SCORE_MAP[stage] || 10,
         orderConfirmed,
         sendImages,
+        cancelOrder,
+        cancelAppointment,
       }
     } catch (error) {
       console.error(`❌ generateAIReply error (محاولة ${attempts}/${maxAttempts}):`, error.message)
@@ -776,6 +866,8 @@ export async function generateAIReply({
           score: 10,
           orderConfirmed: false,
           sendImages: false,
+          cancelOrder: false,
+          cancelAppointment: false,
         }
       }
       await new Promise(resolve => setTimeout(resolve, 500))
@@ -1077,7 +1169,7 @@ export async function processIncomingMessage({
     }
 
     // 6. توليد رد AI
-    const { reply, stage, score, orderConfirmed, sendImages } =
+    const { reply, stage, score, orderConfirmed, sendImages, cancelOrder, cancelAppointment } =
       await generateAIReply({
         agent,
         items,
@@ -1089,9 +1181,55 @@ export async function processIncomingMessage({
         customerHistory,
         appointmentsHistory,
         ordersHistory,
+        currentStage: conversation.stage,
+        customerName: customer.name,
+        customerTag: customer.tag,
       })
-    
-    console.log(`🤖 [${normalizedPhone}] AI result: orderConfirmed=${orderConfirmed}, stage=${stage}`)
+
+    console.log(`🤖 [${normalizedPhone}] AI result: orderConfirmed=${orderConfirmed}, stage=${stage}, cancelOrder=${cancelOrder}, cancelAppointment=${cancelAppointment}`)
+
+    // 6.5 معالجة طلب الإلغاء من الزبون
+    if (cancelOrder) {
+      try {
+        const recentOrder = await prisma.order.findFirst({
+          where: { customerId: customer.id, status: { in: ["PENDING", "CONFIRMED"] } },
+          orderBy: { createdAt: "desc" }
+        })
+        if (recentOrder) {
+          await prisma.order.update({ where: { id: recentOrder.id }, data: { status: "CANCELLED" } })
+          await prisma.notification.create({
+            data: {
+              userId,
+              type: "SYSTEM",
+              title: `fr:Commande annulée ❌||ar:طلبية ملغاة ❌`,
+              message: `fr:${customer.name} a annulé sa commande||ar:${customer.name} ألغى طلبيته`,
+            }
+          })
+          console.log(`✅ [${normalizedPhone}] Order ${recentOrder.id} cancelled by customer request`)
+        }
+      } catch (err) { console.error(`❌ [${normalizedPhone}] Error cancelling order:`, err.message) }
+    }
+
+    if (cancelAppointment) {
+      try {
+        const recentAppointment = await prisma.appointment.findFirst({
+          where: { customerId: customer.id, status: { in: ["PENDING", "CONFIRMED"] } },
+          orderBy: { date: "desc" }
+        })
+        if (recentAppointment) {
+          await prisma.appointment.update({ where: { id: recentAppointment.id }, data: { status: "CANCELLED" } })
+          await prisma.notification.create({
+            data: {
+              userId,
+              type: "SYSTEM",
+              title: `fr:Rendez-vous annulé ❌||ar:موعد ملغى ❌`,
+              message: `fr:${customer.name} a annulé son rendez-vous||ar:${customer.name} ألغى موعده`,
+            }
+          })
+          console.log(`✅ [${normalizedPhone}] Appointment ${recentAppointment.id} cancelled by customer request`)
+        }
+      } catch (err) { console.error(`❌ [${normalizedPhone}] Error cancelling appointment:`, err.message) }
+    }
 
     // حساب قيمة الطلب
     let totalAmount = null
@@ -1148,6 +1286,14 @@ export async function processIncomingMessage({
 
       if (!isServiceMode && selectedItem) {
         try {
+          // ✅ [DEBUG] Log all messages for quantity extraction debugging
+          const allMsgsContent = (conversation.messages || []).map(m => ({ role: m.role, content: m.content.substring(0, 100) }))
+          console.log(`🔍 [DEBUG] All messages for quantity extraction:`, JSON.stringify(allMsgsContent, null, 2))
+          
+          const msgsText = (conversation.messages || []).map(m => m.content).join(" ")
+          const extractedQty = extractQuantityFromMessages(msgsText)
+          console.log(`🔍 [DEBUG] Extracted quantity: ${extractedQty} from ${msgsText.length} chars`)
+          
           const order = await prisma.order.create({
             data: {
               userId,
@@ -1156,21 +1302,26 @@ export async function processIncomingMessage({
               customerPhone: customer.phone,
               productId: selectedItem.id,
               productName: selectedItem.name,
-              quantity: (() => {
-                const msgs = (conversation.messages || []).map(m => m.content).join(" ")
-                return extractQuantityFromMessages(msgs)
-              })(),
-              totalAmount: (() => {
-                const msgs = (conversation.messages || []).map(m => m.content).join(" ")
-                const qty = extractQuantityFromMessages(msgs)
-                return selectedItem.price * qty
-              })(),
+              quantity: extractedQty,
+              totalAmount: selectedItem.price * extractedQty,
               address: extractedAddress,
               status: "PENDING",
               notes: `طلب تلقائي من واتساب — المحادثة: ${conversation.id}`,
             }
           })
-          console.log(`✅ [${normalizedPhone}] Order created: ${order.id}${extractedAddress ? ' with address: ' + extractedAddress : ' (no address)'}`)
+          console.log(`✅ [${normalizedPhone}] Order created: ${order.id} | Qty: ${order.quantity} | Total: ${order.totalAmount}${extractedAddress ? ' | Address: ' + extractedAddress : ''}`)
+
+          // ✅ نقص المخزون بعد تأكيد الطلب
+          try {
+            const currentProduct = await prisma.product.findUnique({ where: { id: selectedItem.id }, select: { stock: true } })
+            if (currentProduct && currentProduct.stock !== null && currentProduct.stock !== undefined) {
+              const newStock = Math.max(0, currentProduct.stock - order.quantity)
+              await prisma.product.update({ where: { id: selectedItem.id }, data: { stock: newStock } })
+              console.log(`📦 [${normalizedPhone}] Stock updated: ${selectedItem.name} ${currentProduct.stock} → ${newStock}`)
+            }
+          } catch (err) {
+            console.error(`❌ [${normalizedPhone}] Error updating stock:`, err.message)
+          }
         } catch (err) {
           console.error(`❌ [${normalizedPhone}] Error creating order:`, err.message)
         }

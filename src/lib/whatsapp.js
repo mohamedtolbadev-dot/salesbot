@@ -252,6 +252,7 @@ export function parseAllIncomingMessages(body) {
 
           // نص الرسالة حسب النوع
           let text = ""
+          let audioId = null
           if (message.type === "text") {
             text = message.text?.body || ""
           } else if (message.type === "interactive") {
@@ -265,6 +266,7 @@ export function parseAllIncomingMessages(body) {
             text = "[صورة]"
           } else if (message.type === "audio") {
             text = "[رسالة صوتية]"
+            audioId = message.audio?.id || null
           }
 
           if (!text.trim() && message.type !== "image") {
@@ -279,6 +281,7 @@ export function parseAllIncomingMessages(body) {
             text: text.trim(),
             timestamp: message.timestamp,
             type: message.type,
+            audioId,
           })
         }
       }
@@ -288,6 +291,78 @@ export function parseAllIncomingMessages(body) {
   } catch (error) {
     console.error("parseAllIncomingMessages error:", error)
     return []
+  }
+}
+
+// 🎤 تحويل رسالة صوتية لنص عبر Whisper API
+export async function transcribeWhatsAppAudio({ token, audioId }) {
+  if (!token || !audioId) return null
+
+  const openaiKey = process.env.OPENAI_API_KEY
+  if (!openaiKey) {
+    console.warn("⚠️ OPENAI_API_KEY not set — voice messages cannot be transcribed")
+    return null
+  }
+
+  try {
+    // 1. جلب رابط الميديا من WhatsApp
+    const mediaRes = await fetch(`${WHATSAPP_API_URL}/${audioId}`, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+
+    if (!mediaRes.ok) {
+      console.error("❌ Failed to get WhatsApp media URL:", mediaRes.status)
+      return null
+    }
+
+    const mediaData = await mediaRes.json()
+    const mediaUrl = mediaData.url
+
+    if (!mediaUrl) {
+      console.error("❌ No media URL in WhatsApp response")
+      return null
+    }
+
+    // 2. تحميل الملف الصوتي
+    const audioRes = await fetch(mediaUrl, {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+
+    if (!audioRes.ok) {
+      console.error("❌ Failed to download audio:", audioRes.status)
+      return null
+    }
+
+    const audioBuffer = await audioRes.arrayBuffer()
+
+    // 3. إرسال للـ Whisper API
+    const formData = new FormData()
+    formData.append("file", new Blob([audioBuffer], { type: "audio/ogg" }), "audio.ogg")
+    formData.append("model", "whisper-1")
+
+    const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${openaiKey}` },
+      body: formData,
+    })
+
+    if (!whisperRes.ok) {
+      const err = await whisperRes.json()
+      console.error("❌ Whisper API error:", err?.error?.message || err)
+      return null
+    }
+
+    const whisperData = await whisperRes.json()
+    const transcription = whisperData.text?.trim()
+
+    if (transcription) {
+      console.log(`🎤 Whisper transcription: "${transcription.substring(0, 100)}"`)
+    }
+
+    return transcription || null
+  } catch (error) {
+    console.error("❌ transcribeWhatsAppAudio error:", error.message)
+    return null
   }
 }
 

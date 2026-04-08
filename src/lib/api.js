@@ -198,6 +198,8 @@ export const customersAPI = {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
+  delete: (id) =>
+    fetchAPI(`/api/customers/${id}`, { method: "DELETE" }),
 }
 
 // Agent APIs
