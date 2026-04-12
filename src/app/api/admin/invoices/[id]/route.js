@@ -18,7 +18,9 @@ export async function PATCH(request, { params }) {
     const decoded = await getSuperAdmin(request)
     if (!decoded) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-    const { id } = await params
+    const resolvedParams = await Promise.resolve(params)
+    const { id } = resolvedParams || {}
+    if (!id) return NextResponse.json({ error: "Invoice ID required" }, { status: 400 })
     const body = await request.json()
     const { status, amount, dueDate, notes, bankInfo, plan } = body
 
@@ -54,7 +56,9 @@ export async function DELETE(request, { params }) {
     const decoded = await getSuperAdmin(request)
     if (!decoded) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-    const { id } = await params
+    const resolvedParams = await Promise.resolve(params)
+    const { id } = resolvedParams || {}
+    if (!id) return NextResponse.json({ error: "Invoice ID required" }, { status: 400 })
     const existing = await prisma.invoice.findUnique({ where: { id } })
     if (!existing) return NextResponse.json({ error: "Invoice not found" }, { status: 404 })
 

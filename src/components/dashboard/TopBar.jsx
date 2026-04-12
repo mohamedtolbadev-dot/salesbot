@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { ThemeToggle } from "@/components/shared/ThemeToggle"
 import { useMobileMenu } from "@/contexts/MobileMenuContext"
@@ -144,14 +144,27 @@ export function TopBar() {
     return () => clearInterval(intervalId)
   }, [])
 
+  // Mounted ref for async guards
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => { isMountedRef.current = false }
+  }, [])
+
   async function openNotifs() {
+    // Prevent duplicate fetches
+    if (notifsLoading) return
     setShowNotifs(true)
     try {
       setNotifsLoading(true)
       const res = await notificationsAPI.getAll({ limit: 20 })
-      setNotifications(res.data?.notifications || [])
+      if (isMountedRef.current) {
+        setNotifications(res.data?.notifications || [])
+      }
     } catch {} finally {
-      setNotifsLoading(false)
+      if (isMountedRef.current) {
+        setNotifsLoading(false)
+      }
     }
   }
 
@@ -272,8 +285,6 @@ export function TopBar() {
                   "top-[60px] left-3 right-3",
                   // Desktop: anchored, fixed width
                   "sm:absolute sm:top-[calc(100%+8px)] sm:left-auto sm:right-0 sm:w-[320px]",
-                  // Override fixed on desktop
-                  "sm:fixed-none",
                 )}
                 style={{
                   backgroundColor: "var(--modal-surface, var(--card))",
@@ -353,8 +364,8 @@ export function TopBar() {
         {/* Theme toggle */}
         <ThemeToggle />
 
-        {/* Divider — hidden on very small screens */}
-        <div className="hidden xs:block w-px h-5 bg-border/50 mx-0.5" />
+        {/* Divider — hidden on mobile */}
+        <div className="hidden sm:block w-px h-5 bg-border/50 mx-0.5" />
 
         {/* User avatar + logout */}
         <div className="flex items-center gap-1 md:gap-1.5">

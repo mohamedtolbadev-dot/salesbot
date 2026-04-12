@@ -29,13 +29,23 @@ export async function GET(request) {
       },
     })
 
+    const normalizedOrders = orders.map((order) => {
+      if (order.conversationId) return order
+      const fallbackConversationId =
+        order.notes?.match(/(?:المحادثة|conversation)\s*:\s*([a-z0-9-]+)/i)?.[1] || null
+      return {
+        ...order,
+        conversationId: fallbackConversationId,
+      }
+    })
+
     // Debug: log first order to verify address is returned
-    if (orders.length > 0) {
-      console.log("[DEBUG] First order fields:", Object.keys(orders[0]))
-      console.log("[DEBUG] First order address:", orders[0].address)
+    if (normalizedOrders.length > 0) {
+      console.log("[DEBUG] First order fields:", Object.keys(normalizedOrders[0]))
+      console.log("[DEBUG] First order address:", normalizedOrders[0].address)
     }
 
-    return successResponse(orders)
+    return successResponse(normalizedOrders)
   } catch (error) {
     console.error("GET /api/orders error:", error)
     return errorResponse("خطأ في جلب الطلبيات", 500)
@@ -48,10 +58,29 @@ export async function POST(request) {
 
   try {
     const body = await request.json()
-    const { customerName, customerPhone, productName, quantity, totalAmount, address, notes, productId, customerId } = body
+    const { customerName, customerPhone, productName, quantity, totalAmount, city, address, notes, productId, customerId } = body
 
-    if (!customerName || !customerPhone || !productName || totalAmount === undefined) {
+    if (!customerName || !customerPhone || (!productName && !productId) || totalAmount === undefined) {
       return errorResponse("الحقول المطلوبة ناقصة", 400)
+    }
+
+    // ✅ إذا جا productId (من المنصة) كنجيب الاسم/الثمن من صفحة المنتجات (DB) ونأمن ownership
+    let finalProductId = productId || null
+    let finalProductName = productName
+    let finalTotalAmount = Number(totalAmount)
+    const finalQty = quantity ? Number(quantity) : 1
+
+    if (finalProductId) {
+      const product = await prisma.product.findFirst({
+        where: { id: finalProductId, userId: user.id }
+      })
+      if (!product) return errorResponse("المنتج غير موجود", 404)
+
+      finalProductName = product.name
+      // إذا totalAmount ما واضحش أو =0، نحسبه من ثمن المنتج × الكمية
+      if (!finalTotalAmount || Number.isNaN(finalTotalAmount)) {
+        finalTotalAmount = Number(product.price) * (finalQty || 1)
+      }
     }
 
     const order = await prisma.order.create({
@@ -60,10 +89,11 @@ export async function POST(request) {
         customerId: customerId || null,
         customerName,
         customerPhone,
-        productId: productId || null,
-        productName,
-        quantity: quantity || 1,
-        totalAmount: Number(totalAmount),
+        productId: finalProductId,
+        productName: finalProductName,
+        quantity: finalQty || 1,
+        totalAmount: finalTotalAmount,
+        city: city || null,
         address: address || null,
         notes: notes || null,
         status: "PENDING",

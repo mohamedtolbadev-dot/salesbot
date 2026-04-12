@@ -37,25 +37,64 @@ function ProfileSkeleton() {
         @keyframes sk-shimmer { 0%{background-position:-700px 0} 100%{background-position:700px 0} }
         .sk{border-radius:6px;background:linear-gradient(90deg,var(--color-background-secondary,rgba(0,0,0,.06)) 25%,var(--color-background-tertiary,rgba(0,0,0,.11)) 50%,var(--color-background-secondary,rgba(0,0,0,.06)) 75%);background-size:700px 100%;animation:sk-shimmer 1.5s ease-in-out infinite}
       `}</style>
-      <div className="flex items-center gap-3">
-        <div className="sk w-9 h-9 rounded-xl" />
-        <div className="flex flex-col gap-1.5"><div className="sk h-5 w-32" /><div className="sk h-3 w-20" /></div>
-      </div>
-      <div className="bg-card border border-border rounded-2xl p-5 flex flex-col sm:flex-row items-start gap-4">
-        <div className="sk w-16 h-16 rounded-full shrink-0" />
-        <div className="flex-1 flex flex-col gap-2">
-          <div className="sk h-5 w-40" />
-          <div className="sk h-4 w-28" />
-          <div className="sk h-3 w-48" />
-        </div>
-        <div className="flex gap-3 shrink-0">
-          <div className="sk h-16 w-24 rounded-xl" />
-          <div className="sk h-16 w-20 rounded-xl" />
+
+      {/* Header (back + title) */}
+      <div className="flex items-start sm:items-center justify-between gap-3">
+        <div className="sk w-9 h-9 rounded-xl shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="sk h-6 w-52 max-w-full" />
+          <div className="sk h-3 w-36 mt-2" />
         </div>
       </div>
-      <div className="sk h-12 rounded-2xl" />
-      <div className="flex flex-col gap-3">
-        {[1,2,3].map(i => <div key={i} className="sk h-20 rounded-xl" />)}
+
+      {/* Profile Card (matches grid layout) */}
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_260px] gap-5">
+          <div className="flex items-start gap-4 min-w-0">
+            <div className="sk w-14 h-14 sm:w-16 sm:h-16 rounded-full shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="sk h-5 w-44" />
+                <div className="sk h-5 w-20" />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <div className="sk h-8 w-44 rounded-xl" />
+                <div className="sk h-8 w-40 rounded-xl" />
+                <div className="sk h-8 w-48 rounded-xl" />
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
+            <div className="sk h-[72px] rounded-xl" />
+            <div className="sk h-[72px] rounded-xl" />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="bg-secondary/50 border border-border/60 rounded-2xl p-1 flex gap-1 overflow-hidden">
+        <div className="sk h-10 w-32 rounded-xl" />
+        <div className="sk h-10 w-28 rounded-xl" />
+        <div className="sk h-10 w-28 rounded-xl" />
+      </div>
+
+      {/* Grid cards (2 columns on desktop) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="bg-card border border-border rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <div className="sk w-9 h-9 rounded-lg shrink-0" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="sk h-4 w-24" />
+                  <div className="sk h-4 w-16" />
+                </div>
+                <div className="sk h-4 w-[85%]" />
+                <div className="sk h-3 w-[60%] mt-2" />
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -89,7 +128,7 @@ function ConversationsList({ conversations, t }) {
     </div>
   )
   return (
-    <div className="flex flex-col gap-2">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {conversations.map(conv => {
         const lastMsg = conv.messages?.[0]
         return (
@@ -139,7 +178,7 @@ function OrdersList({ orders, t, locale }) {
     </div>
   )
   return (
-    <div className="flex flex-col gap-2">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {orders.map(order => {
         const cfg = ORDER_STATUS_CONFIG[order.status] || ORDER_STATUS_CONFIG.PENDING
         const Icon = cfg.icon
@@ -183,7 +222,7 @@ function AppointmentsList({ appointments, t, locale }) {
     </div>
   )
   return (
-    <div className="flex flex-col gap-2">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {appointments.map(appt => {
         const cfg = APPT_STATUS_CONFIG[appt.status] || APPT_STATUS_CONFIG.PENDING
         const date = new Date(appt.date).toLocaleDateString(locale === "ar" ? "ar-MA" : "fr-FR", {
@@ -287,97 +326,104 @@ export default function CustomerProfilePage() {
     <div className="flex flex-col gap-5 pb-8">
 
       {/* ── Header ── */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-start sm:items-center justify-between gap-3">
         <button
           onClick={() => router.back()}
           className="w-9 h-9 rounded-xl border border-border flex items-center justify-center hover:bg-secondary transition-colors shrink-0"
         >
           <ChevronRight size={18} className="text-muted-foreground" />
         </button>
-        <div>
-          <h1 className="text-xl font-bold text-foreground leading-tight">{customer.name}</h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold text-foreground leading-tight truncate">{customer.name}</h1>
           <p className="text-[13px] text-muted-foreground">{t('customers.profile_sub')}</p>
         </div>
       </div>
 
       {/* ── Profile Card ── */}
-      <div className="bg-card border border-border rounded-2xl p-5 flex flex-col sm:flex-row items-start gap-5">
+      <div className="bg-card border border-border rounded-2xl p-5">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_260px] gap-5">
 
-        {/* Avatar */}
-        <div className="relative shrink-0">
-          <div className="absolute -inset-[3px] rounded-full bg-brand-600/25" />
-          <div className="w-16 h-16 rounded-full bg-brand-600 flex items-center justify-center font-bold text-2xl text-white relative">
-            {customer.name?.charAt(0) || "؟"}
-          </div>
-        </div>
+          {/* Avatar + Info */}
+          <div className="flex items-start gap-4 min-w-0">
+            <div className="relative shrink-0">
+              <div className="absolute -inset-[3px] rounded-full bg-brand-600/25" />
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-brand-600 flex items-center justify-center font-bold text-xl sm:text-2xl text-white relative">
+                {customer.name?.charAt(0) || "؟"}
+              </div>
+            </div>
 
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <h2 className="text-[18px] font-bold text-foreground">{customer.name}</h2>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-[17px] sm:text-[18px] font-bold text-foreground truncate">{customer.name}</h2>
 
-            {/* Editable Tag */}
-            <div className="relative">
-              <button
-                onClick={() => setEditingTag(!editingTag)}
-                className={cn(
-                  "flex items-center gap-1 text-[12px] font-semibold px-2 py-0.5 rounded-md border transition-all hover:opacity-80",
-                  tagConfig.className
-                )}
-              >
-                {savingTag ? <Loader2 size={11} className="animate-spin" /> : <Edit2 size={11} />}
-                {tagConfig.label}
-              </button>
-              {editingTag && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setEditingTag(false)} />
-                  <div className="absolute top-full mt-1 right-0 z-20 bg-card border border-border rounded-xl shadow-xl overflow-hidden w-36">
-                    {["NEW", "REGULAR", "VIP", "PROSPECT"].map(tag => {
-                      const cfg = getCustomerTagConfig(tag)
-                      return (
-                        <button
-                          key={tag}
-                          onClick={() => handleTagChange(tag)}
-                          className={cn(
-                            "w-full flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors hover:bg-secondary",
-                            customer.tag === tag ? "bg-secondary/60 font-semibold" : ""
-                          )}
-                        >
-                          <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded border", cfg.className)}>
-                            {cfg.label}
-                          </span>
-                        </button>
-                      )
-                    })}
+                {/* Editable Tag */}
+                <div className="relative">
+                  <button
+                    onClick={() => setEditingTag(!editingTag)}
+                    className={cn(
+                      "flex items-center gap-1 text-[12px] font-semibold px-2 py-0.5 rounded-md border transition-all hover:opacity-80",
+                      tagConfig.className
+                    )}
+                  >
+                    {savingTag ? <Loader2 size={11} className="animate-spin" /> : <Edit2 size={11} />}
+                    {tagConfig.label}
+                  </button>
+                  {editingTag && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setEditingTag(false)} />
+                      <div className="absolute top-full mt-1 right-0 z-20 bg-card border border-border rounded-xl shadow-xl overflow-hidden w-36">
+                        {["NEW", "REGULAR", "VIP", "PROSPECT"].map(tag => {
+                          const cfg = getCustomerTagConfig(tag)
+                          return (
+                            <button
+                              key={tag}
+                              onClick={() => handleTagChange(tag)}
+                              className={cn(
+                                "w-full flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors hover:bg-secondary",
+                                customer.tag === tag ? "bg-secondary/60 font-semibold" : ""
+                              )}
+                            >
+                              <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded border", cfg.className)}>
+                                {cfg.label}
+                              </span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-2">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-secondary/60 border border-border text-[12px] text-foreground">
+                  <Phone size={13} className="text-brand-600" />
+                  <span dir="ltr" className="font-semibold">{customer.phone}</span>
+                </div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-secondary/60 border border-border text-[12px] text-muted-foreground">
+                  <User size={13} className="text-muted-foreground" />
+                  <span>{t('customers.joined_label')}: {joinDate}</span>
+                </div>
+                {customer.lastSeen && (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-secondary/60 border border-border text-[12px] text-muted-foreground">
+                    <Clock size={13} className="text-muted-foreground" />
+                    <span>{t('customers.last_seen')}: {timeAgo(customer.lastSeen, t)}</span>
                   </div>
-                </>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
-          <p className="text-[13px] text-muted-foreground flex items-center gap-1.5 mb-0.5">
-            <Phone size={13} />
-            <span dir="ltr">{customer.phone}</span>
-          </p>
-          <p className="text-[12px] text-muted-foreground">
-            {t('customers.joined_label')}: {joinDate}
-          </p>
-          {customer.lastSeen && (
-            <p className="text-[12px] text-muted-foreground mt-0.5">
-              {t('customers.last_seen')}: {timeAgo(customer.lastSeen, t)}
-            </p>
-          )}
-        </div>
-
-        {/* Quick Stats */}
-        <div className="flex sm:flex-col gap-3 shrink-0 w-full sm:w-auto">
-          <div className="flex-1 sm:flex-none text-center bg-secondary/50 border border-border rounded-xl px-4 py-3">
-            <p className="text-xl font-bold text-brand-600 tabular-nums">{formatAmount(customer.totalSpent || 0)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{t('customers.total_spent')}</p>
-          </div>
-          <div className="flex-1 sm:flex-none text-center bg-secondary/50 border border-border rounded-xl px-4 py-3">
-            <p className="text-xl font-bold text-foreground tabular-nums">{customer.ordersCount ?? 0}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">{t('customers.orders')}</p>
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-1 gap-3">
+            <div className="text-center bg-secondary/50 border border-border rounded-xl px-4 py-3">
+              <p className="text-xl font-bold text-brand-600 tabular-nums">{formatAmount(customer.totalSpent || 0)}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{t('customers.total_spent')}</p>
+            </div>
+            <div className="text-center bg-secondary/50 border border-border rounded-xl px-4 py-3">
+              <p className="text-xl font-bold text-foreground tabular-nums">{customer.ordersCount ?? orders.length ?? 0}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{t('customers.orders')}</p>
+            </div>
           </div>
         </div>
       </div>

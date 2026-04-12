@@ -54,6 +54,8 @@ model Agent {
   language          String           @default("darija")
   isActive          Boolean          @default(true)
   instructions      String?          @db.Text
+  productInstructions String?        @db.Text
+  serviceInstructions String?        @db.Text
   whatsappPhoneId   String?
   whatsappToken     String?          @db.Text
   createdAt         DateTime         @default(now())
@@ -143,6 +145,7 @@ model Conversation {
   score       Int               @default(0)
   isRead      Boolean           @default(false)
   totalAmount Float?
+  context     Json?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   serviceId   String?
@@ -155,12 +158,14 @@ model Conversation {
 }
 
 model Message {
-  id             String       @id @default(cuid())
-  conversationId String
-  role           MessageRole
-  content        String       @db.Text
-  createdAt      DateTime     @default(now())
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id               String       @id @default(cuid())
+  conversationId   String
+  role             MessageRole
+  content          String       @db.Text
+  /// معرّف ميديا واتساب (صوت/…) — تشغيل مجاني عبر بروكسي بدون Whisper
+  whatsappMediaId  String?
+  createdAt        DateTime     @default(now())
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@map("messages")
 }
@@ -299,6 +304,7 @@ model Order {
   quantity       Int         @default(1)
   totalAmount    Float
   status         OrderStatus @default(PENDING)
+  city           String?
   address        String?     @db.Text
   notes          String?     @db.Text
   confirmSent    Boolean     @default(false)

@@ -144,49 +144,38 @@ export async function GET(request) {
     // بيانات الرسم البياني حسب الفترة
     const periodChartData = await getPeriodChartData(user.id, period, periodStart)
 
-    // أسباب الاعتراض - جلب الرسائل ثم تحليلها
-    const userConversations = await prisma.conversation.findMany({
-      where: { userId: user.id },
-      select: { id: true }
+    // أسباب الاعتراض - بدون جلب كل conversation IDs (أخف على DB)
+    const allObjections = await prisma.message.findMany({
+      where: {
+        role: "USER",
+        conversation: { userId: user.id },
+        OR: [
+          { content: { contains: "غالي" } },
+          { content: { contains: "كثير" } },
+          { content: { contains: "نفكر" } },
+          { content: { contains: "مقاس" } },
+          { content: { contains: "لون" } },
+          { content: { contains: "موجود" } },
+          { content: { contains: "مش" } }
+        ]
+      },
+      select: { content: true },
+      take: 100
     })
-    const conversationIds = userConversations.map(c => c.id)
-    
-    let allObjections = []
-    if (conversationIds.length > 0) {
-      allObjections = await prisma.message.findMany({
-        where: {
-          role: "USER",
-          conversationId: { in: conversationIds },
-          OR: [
-            { content: { contains: "غالي" } },
-            { content: { contains: "كثير" } },
-            { content: { contains: "نفكر" } },
-            { content: { contains: "مقاس" } },
-            { content: { contains: "لون" } },
-            { content: { contains: "موجود" } },
-            { content: { contains: "مش" } }
-          ]
-        },
-        select: { content: true },
-        take: 100
-      })
-    }
 
-    // عدد المحادثات في كل مرحلة — 5 parallel counts (no full table scan)
-    const [greetingCount, discoveryCount, pitchingCount, objectionCount, closedCount] = await Promise.all([
-      prisma.conversation.count({ where: { userId: user.id, stage: "GREETING" } }),
-      prisma.conversation.count({ where: { userId: user.id, stage: "DISCOVERY" } }),
-      prisma.conversation.count({ where: { userId: user.id, stage: "PITCHING" } }),
-      prisma.conversation.count({ where: { userId: user.id, stage: "OBJECTION" } }),
-      prisma.conversation.count({ where: { userId: user.id, stage: "CLOSED" } }),
-    ])
-    const stageMap = {
-      GREETING:  greetingCount,
-      DISCOVERY: discoveryCount,
-      PITCHING:  pitchingCount,
-      OBJECTION: objectionCount,
-      CLOSED:    closedCount,
-    }
+    // عدد المحادثات في كل مرحلة — query وحدة بدل 5
+    const stageCounts = await prisma.conversation.groupBy({
+      by: ["stage"],
+      where: {
+        userId: user.id,
+        stage: { in: ["GREETING", "DISCOVERY", "PITCHING", "OBJECTION", "CLOSED"] }
+      },
+      _count: { _all: true }
+    })
+    const stageMap = stageCounts.reduce((acc, row) => {
+      acc[row.stage] = row._count._all
+      return acc
+    }, {})
 
     // رضا الزبائن - متوسط score المحادثات المغلقة
     const closedConversations = await prisma.conversation.findMany({
@@ -242,13 +231,12 @@ export async function GET(request) {
       .slice(0, 5)
 
     // ─── إحصائيات المنتجات والخدمات ───
-    const [totalProducts, activeProducts, outOfStockProducts, totalServices, activeServices] = await Promise.all([
-      prisma.product.count({ where: { userId: user.id } }),
-      prisma.product.count({ where: { userId: user.id, isActive: true } }),
-      prisma.product.count({ where: { userId: user.id, stock: 0 } }),
-      prisma.service.count({ where: { userId: user.id } }),
-      prisma.service.count({ where: { userId: user.id, isActive: true } }),
-    ])
+    // Sequential لتخفيف فتح connections متوازية
+    const totalProducts = await prisma.product.count({ where: { userId: user.id } })
+    const activeProducts = await prisma.product.count({ where: { userId: user.id, isActive: true } })
+    const outOfStockProducts = await prisma.product.count({ where: { userId: user.id, stock: 0 } })
+    const totalServices = await prisma.service.count({ where: { userId: user.id } })
+    const activeServices = await prisma.service.count({ where: { userId: user.id, isActive: true } })
 
     // أكثر المنتجات مبيعاً (من الطلبيات)
     const ordersByProduct = await prisma.order.groupBy({

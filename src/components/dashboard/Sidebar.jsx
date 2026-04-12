@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Logo } from "@/components/shared/Logo"
 import { cn } from "@/lib/utils"
@@ -60,40 +60,109 @@ async function fetchAndSyncRole() {
 }
 
 /* ══════════════════════════════════════
+   Unified Hook: role + counts + markAsSeen + polling
+══════════════════════════════════════ */
+function useNavCountsAndRole({ pollingMs = null } = {}) {
+  const [role, setRole] = useState("USER")
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [newOrdersBadge, setNewOrdersBadge] = useState(0)
+  const [newApptsBadge, setNewApptsBadge] = useState(0)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+    return () => setMounted(false)
+  }, [])
+
+  // Role fetch with sync (guarded)
+  useEffect(() => {
+    let cancelled = false
+    setRole(getUserRoleFromStorage())
+    fetchAndSyncRole().then((r) => {
+      if (!cancelled) setRole(r)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  // Fetch counts (guarded)
+  const refresh = useCallback(() => {
+    // Conversations
+    conversationsAPI.getAll()
+      .then((res) => {
+        if (!mounted) return
+        const convs = res.data?.conversations || []
+        setUnreadCount(convs.filter(c => !c.isRead).length)
+      })
+      .catch(() => {})
+
+    // Orders
+    ordersAPI.getAll()
+      .then((res) => {
+        if (!mounted) return
+        const orders = Array.isArray(res.data) ? res.data : []
+        const last = getLastSeen('sb_seenOrders')
+        setNewOrdersBadge(orders.filter(o => new Date(o.createdAt) > new Date(last)).length)
+      })
+      .catch(() => {})
+
+    // Appointments
+    appointmentsAPI.getAll()
+      .then((res) => {
+        if (!mounted) return
+        const appts = Array.isArray(res.data) ? res.data : []
+        const last = getLastSeen('sb_seenAppts')
+        setNewApptsBadge(appts.filter(a => new Date(a.createdAt) > new Date(last)).length)
+      })
+      .catch(() => {})
+  }, [mounted])
+
+  // Initial fetch + optional polling
+  useEffect(() => {
+    refresh()
+    if (!pollingMs) return
+    const interval = setInterval(refresh, pollingMs)
+    return () => clearInterval(interval)
+  }, [refresh, pollingMs])
+
+  // Allow other pages to trigger a count refresh (e.g. after marking a conversation read)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const onRefresh = () => refresh()
+    window.addEventListener("sb:counts-refresh", onRefresh)
+    return () => window.removeEventListener("sb:counts-refresh", onRefresh)
+  }, [refresh])
+
+  // Mark as seen handlers
+  const markAsSeen = useCallback((type) => {
+    if (type === "conversations") {
+      setUnreadCount(0)
+    } else if (type === "orders") {
+      markSeen('sb_seenOrders')
+      setNewOrdersBadge(0)
+    } else if (type === "appointments") {
+      markSeen('sb_seenAppts')
+      setNewApptsBadge(0)
+    }
+  }, [])
+
+  return {
+    role,
+    unreadCount,
+    newOrdersBadge,
+    newApptsBadge,
+    markAsSeen,
+    refresh,
+  }
+}
+
+/* ══════════════════════════════════════
    MobileNav — Drawer only
 ══════════════════════════════════════ */
 export function MobileNav() {
   const pathname = usePathname()
   const { isOpen, close } = useMobileMenu()
   const { t, isRTL } = useLanguage()
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [newOrdersBadge, setNewOrdersBadge] = useState(0)
-  const [newApptsBadge, setNewApptsBadge] = useState(0)
-  const [role, setRole] = useState("USER")
-
-  useEffect(() => {
-    fetchAndSyncRole().then(setRole)
-    conversationsAPI.getAll()
-      .then((res) => {
-        const convs = res.data?.conversations || []
-        setUnreadCount(convs.filter(c => !c.isRead).length)
-      })
-      .catch(() => {})
-    ordersAPI.getAll()
-      .then((res) => {
-        const orders = Array.isArray(res.data) ? res.data : []
-        const last = getLastSeen('sb_seenOrders')
-        setNewOrdersBadge(orders.filter(o => new Date(o.createdAt) > new Date(last)).length)
-      })
-      .catch(() => {})
-    appointmentsAPI.getAll()
-      .then((res) => {
-        const appts = Array.isArray(res.data) ? res.data : []
-        const last = getLastSeen('sb_seenAppts')
-        setNewApptsBadge(appts.filter(a => new Date(a.createdAt) > new Date(last)).length)
-      })
-      .catch(() => {})
-  }, [])
+  const { role, unreadCount, newOrdersBadge, newApptsBadge, markAsSeen } = useNavCountsAndRole()
 
   useEffect(() => { close() }, [pathname])
 
@@ -152,9 +221,9 @@ export function MobileNav() {
                   href={item.href}
                   onClick={() => {
                     close()
-                    if (item.href === "/dashboard/conversations") { setUnreadCount(0) }
-                    if (item.href === "/dashboard/orders") { markSeen('sb_seenOrders'); setNewOrdersBadge(0) }
-                    if (item.href === "/dashboard/appointments") { markSeen('sb_seenAppts'); setNewApptsBadge(0) }
+                    if (item.href === "/dashboard/conversations") { markAsSeen("conversations") }
+                    if (item.href === "/dashboard/orders") { markAsSeen("orders") }
+                    if (item.href === "/dashboard/appointments") { markAsSeen("appointments") }
                   }}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-all duration-200",
@@ -231,39 +300,7 @@ export function MobileNav() {
 export function Sidebar() {
   const pathname = usePathname()
   const { t } = useLanguage()
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [newOrdersBadge, setNewOrdersBadge] = useState(0)
-  const [newApptsBadge, setNewApptsBadge] = useState(0)
-  const [role, setRole] = useState("USER")
-
-  useEffect(() => {
-    fetchAndSyncRole().then(setRole)
-    const fetchCounts = () => {
-      conversationsAPI.getAll()
-        .then((res) => {
-          const convs = res.data?.conversations || []
-          setUnreadCount(convs.filter(c => !c.isRead).length)
-        })
-        .catch(() => {})
-      ordersAPI.getAll()
-        .then((res) => {
-          const orders = Array.isArray(res.data) ? res.data : []
-          const last = getLastSeen('sb_seenOrders')
-          setNewOrdersBadge(orders.filter(o => new Date(o.createdAt) > new Date(last)).length)
-        })
-        .catch(() => {})
-      appointmentsAPI.getAll()
-        .then((res) => {
-          const appts = Array.isArray(res.data) ? res.data : []
-          const last = getLastSeen('sb_seenAppts')
-          setNewApptsBadge(appts.filter(a => new Date(a.createdAt) > new Date(last)).length)
-        })
-        .catch(() => {})
-    }
-    fetchCounts()
-    const interval = setInterval(fetchCounts, 30_000)
-    return () => clearInterval(interval)
-  }, [])
+  const { role, unreadCount, newOrdersBadge, newApptsBadge, markAsSeen } = useNavCountsAndRole({ pollingMs: 30_000 })
 
   return (
     <aside className="hidden md:flex w-[200px] h-screen flex-col bg-card border-l border-border/50 shrink-0 overflow-hidden">
@@ -283,9 +320,9 @@ export function Sidebar() {
             return (
               <Link key={item.href} href={item.href}
                 onClick={() => {
-                  if (item.href === "/dashboard/conversations") { setUnreadCount(0) }
-                  if (item.href === "/dashboard/orders") { markSeen('sb_seenOrders'); setNewOrdersBadge(0) }
-                  if (item.href === "/dashboard/appointments") { markSeen('sb_seenAppts'); setNewApptsBadge(0) }
+                  if (item.href === "/dashboard/conversations") { markAsSeen("conversations") }
+                  if (item.href === "/dashboard/orders") { markAsSeen("orders") }
+                  if (item.href === "/dashboard/appointments") { markAsSeen("appointments") }
                 }}
                 className={cn(
                   "flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium",

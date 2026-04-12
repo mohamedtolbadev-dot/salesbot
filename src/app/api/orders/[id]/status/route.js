@@ -14,7 +14,7 @@ function getOrderFallbackMessage(status, order, agentLanguage, trackingUrlTempla
 
   const messages = {
     french: {
-      CONFIRMED: `Bonjour ${name} ! ✅\nVotre commande (${product}) a été confirmée.\nMontant : ${amount} DH\nMerci pour votre confiance ! �`,
+      CONFIRMED: `Bonjour ${name} ! ✅\nVotre commande (${product}) a été confirmée.\nMontant : ${amount} DH\nMerci pour votre confiance ! 😊`,
       SHIPPED:   `Bonjour ${name} ! 🚚\nVotre commande (${product}) est en route.${tracking ? `\nN° de suivi : ${tracking}` : ""}${trackingUrl ? `\nLien de suivi : ${trackingUrl}` : ""}\nLivraison sous 24-48h.`,
       DELIVERED: `Bonjour ${name} ! 📦\nVotre commande (${product}) a été livrée.\nNous espérons que vous êtes satisfait(e). 😊`,
       CANCELLED: `Bonjour ${name},\nNous sommes désolés, votre commande (${product}) a été annulée. ❌\nContactez-nous pour plus d'informations.`,
@@ -48,7 +48,12 @@ export async function PATCH(request, { params }) {
     const decoded = verifyToken(token)
     if (!decoded) return NextResponse.json({ error: "Invalid token" }, { status: 401 })
 
-    const { id } = await params
+    // Next.js can provide params as an object or a promise (depending on runtime/build)
+    const resolvedParams = await Promise.resolve(params)
+    const { id } = resolvedParams || {}
+    if (!id) {
+      return NextResponse.json({ error: "معرف الطلبية غير صالح" }, { status: 400 })
+    }
     const body = await request.json()
     const { status, sendMessage = true, trackingNumber } = body
 
@@ -93,7 +98,7 @@ export async function PATCH(request, { params }) {
           },
         })
         if (agent?.whatsappPhoneId && agent?.whatsappToken) {
-          const orderWithTracking = { ...existing, trackingNumber: trackingNumber || existing.trackingNumber }
+          const orderWithTracking = { ...existing, trackingNumber: trackingNumber !== undefined ? trackingNumber : existing.trackingNumber }
 
           const templateMap = {
             CONFIRMED: agent.orderConfirmMessage,
@@ -102,7 +107,7 @@ export async function PATCH(request, { params }) {
             CANCELLED: agent.orderCancelledMessage,
           }
 
-          let message = templateMap[status]
+          let message = templateMap[status]?.trim()
           if (message) {
             // إنشاء رابط التتبع إذا كان متوفراً
             const tracking = orderWithTracking.trackingNumber || ""
@@ -110,19 +115,17 @@ export async function PATCH(request, { params }) {
               ? agent.trackingUrlTemplate.replace(/{tracking}/g, tracking)
               : ""
             
-            console.log("[DEBUG] trackingNumber:", tracking)
-            console.log("[DEBUG] trackingUrlTemplate:", agent.trackingUrlTemplate)
-            console.log("[DEBUG] trackingUrl:", trackingUrl)
-            console.log("[DEBUG] message before replace:", message)
+            // ✅ PII Safe: don't log message content or sensitive fields
             
             message = message
-              .replace(/{name}/g,     orderWithTracking.customerName    || "")
-              .replace(/{product}/g,  orderWithTracking.productName     || "")
-              .replace(/{amount}/g,   String(orderWithTracking.totalAmount  || ""))
-              .replace(/{tracking}/g, tracking)
-              .replace(/{trackingUrl}/g, trackingUrl)
+              .replace(/\{\{?name\}?\}/g,     orderWithTracking.customerName    || "")
+              .replace(/\{\{?product\}?\}/g,  orderWithTracking.productName     || "")
+              .replace(/\{\{?amount\}?\}/g,   String(orderWithTracking.totalAmount  || ""))
+              .replace(/\{\{?tracking\}?\}/g, tracking)
+              .replace(/\{\{?trackingUrl\}?\}/g, trackingUrl)
               
-            console.log("[DEBUG] message after replace:", message)
+            // ✅ PII Safe: log only metadata
+            console.log(`[OrderStatus] Template rendered for status=${status}, hasTracking=${!!tracking}`)
           } else {
             message = getOrderFallbackMessage(status, orderWithTracking, agent.language || "french", agent.trackingUrlTemplate)
           }
@@ -137,7 +140,7 @@ export async function PATCH(request, { params }) {
             if (result.success) {
               messageSent = true
               sentMessage = message
-              const convIdMatch = existing.notes?.match(/المحادثة: ([a-z0-9]+)$/i)
+              const convIdMatch = existing.notes?.match(/المحادثة: ([a-z0-9-]+)$/i)
               if (convIdMatch?.[1]) {
                 await prisma.message.create({
                   data: { conversationId: convIdMatch[1], role: "AGENT", content: message },

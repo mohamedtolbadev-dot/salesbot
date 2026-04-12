@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sendWhatsAppMessage } from "@/lib/whatsapp"
+import { renderTemplate } from "@/lib/aiAgent"
 
 // GET /api/appointments/reminders/send - Called by Vercel cron job (schedule: "0 9 * * *")
 export async function GET(request) {
@@ -68,15 +69,44 @@ async function handleReminders(request) {
         continue
       }
 
+      const serviceName = appointment.serviceName || appointment.service?.name || "خدمة"
+      const customerName = appointment.customer?.name || appointment.customerName || ""
+
       const time = new Date(appointment.date).toLocaleTimeString("ar-MA", {
         hour: "2-digit",
         minute: "2-digit",
       })
-      const serviceName = appointment.serviceName || appointment.service?.name || "خدمة"
 
-      const message = `غداً عندك موعد الساعة ${time}\nالخدمة: ${serviceName}\nواش مازلت موافق؟`
+      // Template variables
+      const vars = {
+        name: customerName,
+        customerName,
+        service: serviceName,
+        serviceName,
+        time,
+        date: new Date(appointment.date).toLocaleDateString("ar-MA", {
+          weekday: "long", day: "numeric", month: "long",
+        }),
+      }
 
-      console.log(`📤 [Reminders] Sending reminder to ${customerPhone} for appointment ${appointment.id}`)
+      // ✅ Use custom template from agent settings, or fallback to hardcoded
+      let message
+      const customTemplate = agent?.appointmentReminderMessage
+      if (customTemplate) {
+        message = renderTemplate(customTemplate, vars)
+      }
+
+      // If no custom template or render failed, use fallback
+      if (!message || message.length < 5) {
+        const nameDisplay = customerName ? ` ${customerName}` : ""
+        message = `مرحبا${nameDisplay}! ⏰\nتذكير: عندك موعد غداً\n⌛ ${serviceName}\n🕐 ${time}\nواش مازال موافق؟`
+      } else {
+        console.log(`📋 [Reminders] Using custom reminder template for appointment ${appointment.id}`)
+      }
+
+      // ✅ PII Safe: mask phone number in logs
+      const maskedPhone = customerPhone ? "******" + customerPhone.slice(-4) : "N/A"
+      console.log(`📤 [Reminders] Sending reminder to ${maskedPhone} for appointment ${appointment.id.slice(0, 6)}...`)
 
       const result = await sendWhatsAppMessage({
         phoneId: agent.whatsappPhoneId,

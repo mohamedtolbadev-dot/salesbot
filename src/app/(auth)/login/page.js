@@ -91,8 +91,10 @@ export default function LoginPage() {
 
       const result = await authAPI.googleLogin(response.credential)
 
-      localStorage.setItem("token", result.data.token)
-      localStorage.setItem("user", JSON.stringify(result.data.user))
+      const token = result?.data?.token || result?.token
+      const user = result?.data?.user || result?.user
+      if (token) localStorage.setItem("token", token)
+      if (user) localStorage.setItem("user", JSON.stringify(user))
 
       router.push("/dashboard")
     } catch (err) {
@@ -116,8 +118,10 @@ export default function LoginPage() {
       
       const response = await authAPI.login(email, password)
       
-      localStorage.setItem("token", response.data.token)
-      localStorage.setItem("user", JSON.stringify(response.data.user))
+      const token = response?.data?.token || response?.token
+      const user = response?.data?.user || response?.user
+      if (token) localStorage.setItem("token", token)
+      if (user) localStorage.setItem("user", JSON.stringify(user))
 
       router.push("/dashboard")
     } catch (err) {

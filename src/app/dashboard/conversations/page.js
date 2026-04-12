@@ -1,14 +1,15 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo, useCallback, Suspense } from "react"
-import { useSearchParams } from "next/navigation"
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, Suspense } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { conversationsAPI } from "@/lib/api"
 import { getStageConfig, getStageClassName, getScoreColor, timeAgo, getInitials, getToken } from "@/lib/helpers"
 import { cn } from "@/lib/utils"
 import { Search, Download, MessageCircle, Sparkles,
   Users, CheckCircle, AlertCircle, Loader2,
   RefreshCw, ChevronRight, Trash2, AlertTriangle,
-  X, ShoppingBag, Wrench, Send,
+  X, ShoppingBag, Wrench, Send, Mic,
+  Paperclip, ImageIcon, FileText, Video, Eye,
 } from "lucide-react"
 import { useLanguage } from "@/contexts/LanguageContext"
 
@@ -35,7 +36,7 @@ function useStageLabel() {
 function ConversationsSkeleton() {
   const { t } = useLanguage()
   return (
-    <div className="flex flex-col gap-5 pb-6">
+    <div className="flex flex-col gap-4 pb-6">
       <style>{`
         @keyframes sk-shimmer {
           0%   { background-position: -700px 0; }
@@ -74,7 +75,7 @@ function ConversationsSkeleton() {
       `}</style>
 
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center bg-card border border-border rounded-xl px-4 py-3">
         <div className="flex items-center gap-2.5">
           <div className="sk w-8 h-8 rounded-lg" />
           <div className="flex flex-col gap-1.5">
@@ -117,7 +118,7 @@ function ConversationsSkeleton() {
 
       {/* List + Detail */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 bg-card border border-border rounded-xl p-2.5 min-h-[420px]">
           {[0,1,2,3,4].map(i => (
             <div key={i} className="bg-card border border-border rounded-xl p-4 flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
@@ -232,25 +233,607 @@ function Avatar({ name, size = "sm" }) {
   )
 }
 
-/* ─────────────── Message Bubble ─────────────── */
-function MessageBubble({ msg, customerName }) {
-  const isAgent = msg.role === "AGENT"
+/* ─────────────── Voice (WhatsApp media — مجاني عبر بروكسي) ─────────────── */
+function VoiceMessagePlayer({ conversationId, messageId }) {
+  const [url, setUrl] = useState(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let objectUrl
+    const ac = new AbortController()
+    ;(async () => {
+      try {
+        const token = getToken()
+        if (!token) {
+          setFailed(true)
+          return
+        }
+        const res = await fetch(
+          `/api/conversations/${conversationId}/messages/${messageId}/audio`,
+          { headers: { Authorization: `Bearer ${token}` }, signal: ac.signal }
+        )
+        if (!res.ok) throw new Error("audio")
+        const blob = await res.blob()
+        objectUrl = URL.createObjectURL(blob)
+        setUrl(objectUrl)
+      } catch {
+        if (!ac.signal.aborted) setFailed(true)
+      }
+    })()
+    return () => {
+      ac.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [conversationId, messageId])
+
+  if (failed) {
+    return <span className="text-[11px] text-muted-foreground">تعذر التشغيل</span>
+  }
+  if (!url) {
+    return <Loader2 size={14} className="animate-spin text-brand-600 shrink-0" aria-hidden />
+  }
   return (
-    <div className={cn("flex gap-2 items-end", !isAgent && "flex-row-reverse")}>
+    <audio src={url} controls preload="none" className="max-w-[min(260px,72vw)] h-8 align-middle" />
+  )
+}
+
+/* ─────────────── Media Attach Button with Preview ─────────────── */
+function MediaAttachButton({ conversationId, disabled, onSent }) {
+  const { t } = useLanguage()
+  const [open, setOpen] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState(null)
+
+  // Preview state
+  const [preview, setPreview] = useState(null) // { file, mediaType, url, name, size }
+
+  const imageInputRef = useRef(null)
+  const videoInputRef = useRef(null)
+  const docInputRef = useRef(null)
+  const menuRef = useRef(null)
+
+  // Cleanup preview blob URL on unmount or change
+  useEffect(() => {
+    return () => {
+      if (preview?.url?.startsWith("blob:")) URL.revokeObjectURL(preview.url)
+    }
+  }, [preview])
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!open) return
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [open])
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  // Compress image using Canvas API to reduce file size
+  const compressImage = useCallback(async (file) => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      const objectUrl = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl)
+        let { width, height } = img
+        const maxDim = 1600
+        if (width > maxDim || height > maxDim) {
+          const ratio = Math.min(maxDim / width, maxDim / height)
+          width = Math.round(width * ratio)
+          height = Math.round(height * ratio)
+        }
+        const canvas = document.createElement("canvas")
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext("2d")
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob((blob) => {
+          if (!blob) { resolve(file); return }
+          resolve(new File([blob], file.name.replace(/\.\w+$/, ".jpg"), {
+            type: "image/jpeg", lastModified: Date.now()
+          }))
+        }, "image/jpeg", 0.8)
+      }
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve(file) }
+      img.src = objectUrl
+    })
+  }, [])
+
+  const handleFileSelect = useCallback(async (file, mediaType) => {
+    if (!file) return
+    setOpen(false)
+    setError(null)
+
+    let processedFile = file
+
+    // Always compress images to reduce upload size
+    if (mediaType === "image") {
+      processedFile = await compressImage(file)
+    }
+
+    // Create preview URL for images and videos
+    const url = (mediaType === "image" || mediaType === "video")
+      ? URL.createObjectURL(processedFile) : null
+
+    setPreview({ file: processedFile, mediaType, url, name: file.name, size: processedFile.size })
+  }, [compressImage])
+
+  const handleCancelPreview = useCallback(() => {
+    if (preview?.url?.startsWith("blob:")) URL.revokeObjectURL(preview.url)
+    setPreview(null)
+    setError(null)
+    if (imageInputRef.current) imageInputRef.current.value = ""
+    if (videoInputRef.current) videoInputRef.current.value = ""
+    if (docInputRef.current) docInputRef.current.value = ""
+  }, [preview])
+
+  const handleSend = useCallback(async () => {
+    if (!preview?.file || !conversationId) return
+    setSending(true)
+    setError(null)
+
+    try {
+      const fd = new FormData()
+      fd.append("file", preview.file)
+      fd.append("type", preview.mediaType)
+
+      const token = getToken()
+      const res = await fetch(`/api/conversations/${conversationId}/send-media`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      })
+
+      if (res.status === 413) throw new Error(t('conv.file_too_large'))
+
+      let data
+      try { data = await res.json() } catch { data = {} }
+      if (!res.ok) throw new Error(data.error || t('conv.send_failed'))
+
+      handleCancelPreview()
+      onSent?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSending(false)
+    }
+  }, [preview, conversationId, onSent, handleCancelPreview])
+
+  // Escape key to close preview
+  useEffect(() => {
+    if (!preview) return
+    const handler = (e) => { if (e.key === "Escape") handleCancelPreview() }
+    document.addEventListener("keydown", handler)
+    return () => document.removeEventListener("keydown", handler)
+  }, [preview, handleCancelPreview])
+
+  return (
+    <>
+      <div className="relative" ref={menuRef}>
+        {/* Hidden file inputs */}
+        <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f, "image") }} />
+        <input ref={videoInputRef} type="file" accept="video/mp4,video/3gpp" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f, "video") }} />
+        <input ref={docInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f, "document") }} />
+
+        {/* Attach button */}
+        <button
+          onClick={() => setOpen(prev => !prev)}
+          disabled={disabled || sending}
+          className={cn(
+            "shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all",
+            "bg-secondary border border-border text-muted-foreground",
+            "hover:text-foreground hover:border-brand-400",
+            "active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed",
+            sending && "animate-pulse"
+          )}
+          title={t('conv.attach_file')}
+        >
+          {sending ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+        </button>
+
+        {/* Dropdown menu */}
+        {open && !sending && (
+          <div className="absolute bottom-12 left-0 z-50 w-48 bg-card border border-border rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <button
+              onClick={() => imageInputRef.current?.click()}
+              className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] font-medium text-foreground hover:bg-secondary transition-colors"
+            >
+              <ImageIcon size={15} className="text-brand-600" />
+              {t('conv.media_image')}
+              <span className="text-[10px] text-muted-foreground mr-auto">{t('conv.media_image_types')}</span>
+            </button>
+            <div className="h-px bg-border" />
+            <button
+              onClick={() => videoInputRef.current?.click()}
+              className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] font-medium text-foreground hover:bg-secondary transition-colors"
+            >
+              <Video size={15} className="text-brand-600" />
+              {t('conv.media_video')}
+              <span className="text-[10px] text-muted-foreground mr-auto">{t('conv.media_video_types')}</span>
+            </button>
+            <div className="h-px bg-border" />
+            <button
+              onClick={() => docInputRef.current?.click()}
+              className="flex items-center gap-2.5 w-full px-3 py-2.5 text-[13px] font-medium text-foreground hover:bg-secondary transition-colors"
+            >
+              <FileText size={15} className="text-brand-600" />
+              {t('conv.media_document')}
+              <span className="text-[10px] text-muted-foreground mr-auto">{t('conv.media_doc_types')}</span>
+            </button>
+          </div>
+        )}
+
+        {/* Error toast (only when no preview open) */}
+        {error && !preview && (
+          <div className="absolute bottom-12 left-0 z-50 w-52 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
+            <p className="text-[11px] text-red-600 font-medium">{error}</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Preview Modal (Portal-style overlay) ── */}
+      {preview && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) handleCancelPreview() }}>
+          <div className="relative w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/30">
+              <div className="flex items-center gap-2">
+                <Eye size={16} className="text-brand-600" />
+                <span className="text-[13px] font-semibold text-foreground">{t('conv.preview_title')}</span>
+              </div>
+              <button onClick={handleCancelPreview}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Preview content */}
+            <div className="p-4">
+              {/* Image preview */}
+              {preview.mediaType === "image" && preview.url && (
+                <div className="rounded-xl overflow-hidden border border-border bg-secondary/20 mb-3">
+                  <img src={preview.url} alt={preview.name}
+                    className="w-full max-h-[280px] object-contain bg-black/5" />
+                </div>
+              )}
+
+              {/* Video preview */}
+              {preview.mediaType === "video" && preview.url && (
+                <div className="rounded-xl overflow-hidden border border-border bg-black mb-3">
+                  <video src={preview.url} controls preload="metadata"
+                    className="w-full max-h-[280px] object-contain" />
+                </div>
+              )}
+
+              {/* Document preview */}
+              {preview.mediaType === "document" && (
+                <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-secondary/20 mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-brand-600/10 flex items-center justify-center shrink-0">
+                    <FileText size={20} className="text-brand-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-foreground truncate">{preview.name}</p>
+                    <p className="text-[11px] text-muted-foreground">{formatFileSize(preview.size)}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* File info for image/video */}
+              {(preview.mediaType === "image" || preview.mediaType === "video") && (
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[11px] text-muted-foreground truncate flex-1">{preview.name}</span>
+                  <span className="text-[11px] text-muted-foreground shrink-0">{formatFileSize(preview.size)}</span>
+                </div>
+              )}
+
+              {/* Error inside modal */}
+              {error && (
+                <p className="text-[11px] text-red-600 font-medium mt-2">{error}</p>
+              )}
+            </div>
+
+            {/* Footer actions */}
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-border bg-secondary/20">
+              <button onClick={handleCancelPreview} disabled={sending}
+                className="flex-1 px-3 py-2 rounded-xl text-[13px] font-medium text-muted-foreground
+                  bg-secondary border border-border hover:text-foreground hover:bg-secondary/80 transition-colors
+                  disabled:opacity-40 disabled:cursor-not-allowed">
+                {t('common.cancel')}
+              </button>
+              <button onClick={handleSend} disabled={sending}
+                className="flex-1 px-3 py-2 rounded-xl text-[13px] font-semibold text-white
+                  bg-brand-600 hover:bg-brand-700 active:scale-[0.98] transition-all
+                  disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                {sending
+                  ? <><Loader2 size={14} className="animate-spin" /> {t('conv.sending')}</>
+                  : <><Send size={14} /> {t('conv.send_now')}</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/* ─────────────── Image Message Viewer ─────────────── */
+function ImageMessageViewer({ conversationId, messageId }) {
+  const { t } = useLanguage()
+  const [src, setSrc] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [errored, setErrored] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+
+  useEffect(() => {
+    if (!conversationId || !messageId) return
+    const token = getToken()
+    fetch(`/api/conversations/${conversationId}/messages/${messageId}/media`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => {
+        if (!res.ok) throw new Error()
+        return res.blob()
+      })
+      .then(blob => {
+        setSrc(URL.createObjectURL(blob))
+        setLoading(false)
+      })
+      .catch(() => {
+        setErrored(true)
+        setLoading(false)
+      })
+
+    return () => {
+      if (src) URL.revokeObjectURL(src)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, messageId])
+
+  if (loading) {
+    return (
+      <div className="w-48 h-32 bg-secondary/30 rounded-lg animate-pulse" />
+    )
+  }
+  if (errored || !src) {
+    return (
+      <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+        <ImageIcon size={14} />
+        <span>{t('conv.image_load_failed')}</span>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <img
+        src={src}
+        alt={t('conv.media_image')}
+        className="max-w-[240px] max-h-[200px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity object-cover"
+        onClick={() => setFullscreen(true)}
+      />
+      {fullscreen && (
+        <div
+          className="fixed inset-0 z-100 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setFullscreen(false)}
+        >
+          <button
+            onClick={() => setFullscreen(false)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 backdrop-blur flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={src}
+            alt={t('conv.media_image')}
+            className="max-w-[90vw] max-h-[85vh] rounded-xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
+  )
+}
+
+/* ─────────────── Document Message Viewer ─────────────── */
+function DocumentMessageViewer({ conversationId, messageId, content }) {
+  const { t } = useLanguage()
+  const [downloading, setDownloading] = useState(false)
+  const filenameMatch = content?.match(/\[مستند:\s*(.+?)\]/)
+  const filename = filenameMatch?.[1] || "document"
+
+  const handleDownload = async () => {
+    if (downloading) return
+    setDownloading(true)
+    try {
+      const token = getToken()
+      const res = await fetch(
+        `/api/conversations/${conversationId}/messages/${messageId}/media`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      console.error("Document download failed")
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleDownload}
+      disabled={downloading}
+      className="flex items-center gap-2 bg-secondary/60 hover:bg-secondary border border-border rounded-lg px-3 py-2 transition-colors group"
+    >
+      <div className="w-8 h-8 rounded-lg bg-brand-600/10 flex items-center justify-center shrink-0">
+        <FileText size={16} className="text-brand-600" />
+      </div>
+      <div className="text-right min-w-0">
+        <p className="text-[12px] font-semibold text-foreground truncate max-w-[160px]">{filename}</p>
+        <p className="text-[10px] text-muted-foreground">
+          {downloading ? t('conv.downloading') : t('conv.tap_to_download')}
+        </p>
+      </div>
+      {downloading
+        ? <Loader2 size={14} className="animate-spin text-brand-600 shrink-0" />
+        : <Download size={14} className="text-muted-foreground group-hover:text-brand-600 shrink-0 transition-colors" />
+      }
+    </button>
+  )
+}
+
+/* ─────────────── Message Bubble ─────────────── */
+function MessageBubble({ msg, customerName, conversationId }) {
+  const { t } = useLanguage()
+  const isAgent = msg.role === "AGENT"
+  const contentStr = String(msg.content || "").trim()
+
+  // Detect message types
+  const isImage = contentStr.startsWith("[صورة]") && msg.whatsappMediaId
+  const isDocument = contentStr.startsWith("[مستند:") && msg.whatsappMediaId
+  const isVoice = contentStr === "[رسالة صوتية]" && msg.whatsappMediaId
+  const isCustomerImage = contentStr === "[صورة]" && !msg.whatsappMediaId
+  const isCustomerVoice = contentStr === "[رسالة صوتية]" && !msg.whatsappMediaId
+
+  // Show voice player for messages with whatsappMediaId that are voice
+  const showVoice = Boolean(isVoice && conversationId)
+
+  // Caption text after the tag
+  const imageCaption = isImage ? contentStr.replace(/^\[صورة\]\s*/, "").trim() : ""
+
+  return (
+    <div className={cn("flex gap-2 items-end",
+      !isAgent && "flex-row-reverse")}>
       <div className={cn(
-        "w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0",
-        isAgent ? "bg-secondary text-brand-600" : "bg-brand-600 text-white"
+        "w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0",
+        isAgent
+          ? "bg-secondary text-foreground border border-border"
+          : "bg-card text-foreground border border-border"
       )}>
         {isAgent ? "و" : getInitials(customerName)}
       </div>
       <div className={cn(
-        "rounded-2xl px-3 py-2 text-[14px] max-w-[75%] leading-relaxed",
+        "rounded-2xl px-2.5 py-1.5 text-[13px] max-w-[78%] leading-relaxed whitespace-pre-wrap break-words",
         isAgent
-          ? "bg-card border border-border text-foreground rounded-tl-sm"
-          : "bg-brand-600 text-white rounded-tr-sm shadow-sm shadow-brand-600/20"
+          ? "bg-secondary text-foreground border border-border rounded-tl-sm"
+          : "bg-card text-foreground border border-border rounded-tr-sm"
       )}>
-        {msg.content}
+        {isImage ? (
+          <div className="flex flex-col gap-1.5">
+            <ImageMessageViewer
+              conversationId={conversationId}
+              messageId={msg.id}
+            />
+            {imageCaption && (
+              <span className="text-[12px] text-muted-foreground">{imageCaption}</span>
+            )}
+          </div>
+        ) : isDocument ? (
+          <DocumentMessageViewer
+            conversationId={conversationId}
+            messageId={msg.id}
+            content={msg.content}
+          />
+        ) : showVoice ? (
+          <div className="flex flex-col gap-1.5">
+            <VoiceMessagePlayer
+              conversationId={conversationId}
+              messageId={msg.id}
+            />
+          </div>
+        ) : isCustomerImage ? (
+          <div className="flex items-center gap-1.5">
+            <ImageIcon size={12} className="text-muted-foreground shrink-0" />
+            <span className="text-[12px] italic text-muted-foreground">{t('conv.media_image')}</span>
+          </div>
+        ) : isCustomerVoice ? (
+          <div className="flex items-center gap-1.5">
+            <Mic size={12} className="text-muted-foreground shrink-0" />
+            <span className="text-[12px] italic text-muted-foreground">{t('conv.voice_message')}</span>
+          </div>
+        ) : (
+          msg.content
+        )}
       </div>
+    </div>
+  )
+}
+
+/** Scrolls to newest messages when opening a thread or when messages update */
+function ConversationMessagesScroll({
+  className,
+  conversationId,
+  messages,
+  messagesLoading,
+  messagesError,
+  onRetryMessages,
+  customerName,
+}) {
+  const { t } = useLanguage()
+  const scrollRef = useRef(null)
+  const last = messages[messages.length - 1]
+  const scrollKey = last
+    ? `${messages.length}:${last.id ?? ""}:${last.createdAt ?? ""}`
+    : `${messages.length}`
+
+  useLayoutEffect(() => {
+    if (messagesError) return
+    const el = scrollRef.current
+    if (!el || messages.length === 0) return
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+    })
+  }, [conversationId, messagesError, scrollKey])
+
+  return (
+    <div ref={scrollRef} className={className}>
+      {messagesError ? (
+        <div className="flex flex-col items-center justify-center flex-1 gap-2 min-h-[120px]">
+          <AlertCircle size={20} className="text-red-500" />
+          <p className="text-xs text-muted-foreground">{messagesError}</p>
+          <button
+            type="button"
+            onClick={onRetryMessages}
+            className="text-xs text-brand-600 hover:text-brand-800 transition-colors">
+            {t('common.retry')}
+          </button>
+        </div>
+      ) : messages.length === 0 ? (
+        <div className="flex items-center justify-center flex-1 text-[14px] text-muted-foreground min-h-[120px]">
+          {t('conv.no_messages')}
+        </div>
+      ) : (
+        messages.map(msg => (
+          <MessageBubble
+            key={msg.id || `${msg.role}-${msg.createdAt}`}
+            msg={msg}
+            customerName={customerName}
+            conversationId={conversationId}
+          />
+        ))
+      )}
     </div>
   )
 }
@@ -298,9 +881,11 @@ function ConversationsContent() {
   const [replySending, setReplySending]         = useState(false)
   const [replyError, setReplyError]             = useState(null)
   const [newMsgToast, setNewMsgToast]           = useState(null)
-  const prevConvsRef  = useRef(null)
-  const selectedRef   = useRef(null)
-  const toastTimerRef = useRef(null)
+  const prevConvsRef     = useRef(null)
+  const selectedRef      = useRef(null)
+  const toastTimerRef    = useRef(null)
+  const hasAutoSelectedRef = useRef(false)
+  const router = useRouter()
 
   const handleTypeChange = useCallback((type) => {
     setConvType(type)
@@ -315,6 +900,15 @@ function ConversationsContent() {
 
   const handleManualReply = useCallback(async () => {
     if (!replyText.trim() || !selected?.id) return
+    const optimisticMsg = {
+      id: `temp-${Date.now()}`,
+      role: "AGENT",
+      content: replyText.trim(),
+      createdAt: new Date().toISOString()
+    }
+    setMessages(prev => [...prev, optimisticMsg])
+    const textToSend = replyText.trim()
+    setReplyText("")
     try {
       setReplySending(true)
       setReplyError(null)
@@ -325,18 +919,42 @@ function ConversationsContent() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
         },
-        body: JSON.stringify({ message: replyText.trim() }),
+        body: JSON.stringify({ message: textToSend }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "فشل الإرسال")
-      setMessages(prev => [...prev, data.data])
-      setReplyText("")
+      if (!res.ok) {
+        // rollback optimistic message on failure
+        setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id))
+        setReplyText(textToSend)
+        throw new Error(data.error || t('conv.send_failed'))
+      }
+      // replace optimistic with real message
+      setMessages(prev => prev.map(m =>
+        m.id === optimisticMsg.id ? data.data : m
+      ))
     } catch (err) {
       setReplyError(err.message)
     } finally {
       setReplySending(false)
     }
-  }, [replyText, selected?.id])
+  }, [replyText, selected?.id, t])
+
+  // 🔧 FIX: Callback to refresh messages after sending voice
+  // 📍 LOCATION: ConversationsContent, after handleManualReply
+  const handleRefreshMessages = useCallback(async () => {
+    if (!selected?.id) return
+    try {
+      const res = await conversationsAPI.getById(selected.id)
+      if (res?.data?.messages) {
+        setMessages(res.data.messages)
+        console.log(`✅ Messages refreshed: ${res.data.messages.length} messages`)
+      }
+    } catch (err) {
+      console.error("❌ Failed to refresh messages:", err)
+      // لا نعرض رسالة خطأ هنا — فقط silent fail
+      // البولينج سيحدّث الرسائل في خلال 3 ثوان
+    }
+  }, [selected?.id])
 
   const confirmDelete = useCallback(async () => {
     const { id } = deleteModal
@@ -371,7 +989,7 @@ function ConversationsContent() {
   }, [])
 
   const pollConversations = useCallback(async () => {
-    if (!prevConvsRef.current) return
+    if (!prevConvsRef.current || !getToken()) return
     try {
       const response = await conversationsAPI.getAll({})
       const newConvs = response.data?.conversations || []
@@ -408,11 +1026,34 @@ function ConversationsContent() {
   useEffect(() => { fetchConversations() }, [fetchConversations])
 
   useEffect(() => {
-    const interval = setInterval(pollConversations, 8000)
+    const interval = setInterval(pollConversations, 4000)
     return () => clearInterval(interval)
   }, [pollConversations])
 
   useEffect(() => { selectedRef.current = selected }, [selected])
+
+  // Mark conversation as read when opened (so sidebar badge clears)
+  useEffect(() => {
+    if (!selected?.id) return
+    if (selected.isRead) return
+
+    // Optimistic UI: clear "new" badge immediately
+    setSelected(prev => (prev?.id === selected.id ? { ...prev, isRead: true } : prev))
+    setConversations(prev =>
+      prev.map(c => (c.id === selected.id ? { ...c, isRead: true } : c))
+    )
+
+    conversationsAPI
+      .update(selected.id, { isRead: true })
+      .then(() => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("sb:counts-refresh"))
+        }
+      })
+      .catch(() => {
+        // If it fails, we keep optimistic state; next poll will reconcile.
+      })
+  }, [selected?.id, selected?.isRead])
 
   useEffect(() => {
     if (!selected?.id) return
@@ -421,29 +1062,39 @@ function ConversationsContent() {
   }, [selected?.id])
 
   useEffect(() => {
-    const fetchAgentStatus = async () => {
+    const tick = async () => {
+      const token = getToken()
+      if (!token) return
       try {
-        const token = getToken()
         const res = await fetch("/api/agent", {
-          headers: { "Authorization": `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}` }
         })
         const data = await res.json()
         setAgentIsActive(data.data?.isActive ?? true)
       } catch {}
     }
-    fetchAgentStatus()
+    tick()
+    const interval = setInterval(tick, 10000)
+    return () => clearInterval(interval)
   }, [])
 
-  // Auto-select from URL ?id= param
+  // Auto-select from URL ?id= param — runs once then clears URL
   useEffect(() => {
+    if (hasAutoSelectedRef.current) return
     const targetId = searchParams?.get("id")
     if (!targetId || conversations.length === 0) return
     const match = conversations.find(c => c.id === targetId)
     if (!match) return
+    
+    hasAutoSelectedRef.current = true
     const neededType = match.type === "service" ? "service" : "product"
     if (convType !== neededType) setConvType(neededType)
     setFilter("all")
     setSelected(match)
+    
+    // Clear ?id= from URL so polling won't re-select after user exits
+    const newUrl = window.location.pathname
+    router.replace(newUrl, { scroll: false })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations, searchParams])
 
@@ -453,29 +1104,44 @@ function ConversationsContent() {
     setReplyError(null)
     ;(async () => {
       try {
-        setMessagesLoading(true); setMessagesError(null); setMessages([])
+        setMessagesError(null)
         const res = await conversationsAPI.getById(selected.id)
         setMessages(res.data?.messages || [])
       } catch (err) { 
         setMessages([]) 
-        setMessagesError("فشل في تحميل الرسائل")
+        setMessagesError(t('conv.messages_load_failed'))
         console.error("Fetch messages error:", err)
       }
       finally { setMessagesLoading(false) }
     })()
-  }, [selected?.id])
+  }, [selected?.id, t])
 
+  // Refresh open thread whenever AI is on OR off — WhatsApp messages must appear without refresh
   useEffect(() => {
-    if (!selected?.id || agentIsActive) return
-    const interval = setInterval(async () => {
+    if (!selected?.id) return
+    let cancelled = false
+    const tick = async () => {
+      if (!getToken()) return
       try {
         const res = await conversationsAPI.getById(selected.id)
+        if (cancelled) return
         const incoming = res.data?.messages || []
-        setMessages(prev => incoming.length > prev.length ? incoming : prev)
+        setMessages(prev => {
+          const a = prev[prev.length - 1]
+          const b = incoming[incoming.length - 1]
+          if (incoming.length !== prev.length || a?.id !== b?.id || a?.content !== b?.content) {
+            return incoming
+          }
+          return prev
+        })
       } catch {}
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [selected?.id, agentIsActive])
+    }
+    const interval = setInterval(tick, 2000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [selected?.id])
 
   const productConvs = useMemo(() =>
     conversations.filter(c => c.stage !== "ARCHIVED" && c.type !== "service"),
@@ -539,9 +1205,8 @@ function ConversationsContent() {
   if (selected) {
     return (
       <>
-        <div className="fixed inset-0 z-50 flex flex-col lg:hidden"
-          style={{ backgroundColor: "hsl(var(--card))" }}>
-          <div className="flex items-center gap-3 px-3 py-3 border-b border-border bg-card shrink-0"
+        <div className="fixed inset-0 z-50 flex flex-col lg:hidden bg-card">
+          <div className="flex items-center gap-3 px-3 py-3 border-b border-border bg-card/95 backdrop-blur-sm shrink-0"
             style={{ paddingTop: "calc(env(safe-area-inset-top) + 12px)" }}>
             <button onClick={() => { setSelected(null); setMessages([]) }}
               className="flex items-center gap-1 text-brand-600 font-semibold text-sm shrink-0">
@@ -560,7 +1225,7 @@ function ConversationsContent() {
               {getStageLabel(selected.stage, selected.type)}
             </span>
           </div>
-          <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-secondary/30 shrink-0">
+          <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-secondary/20 shrink-0">
             <span className="text-[12px] text-muted-foreground font-medium">{t('conv.score')}</span>
             <div className="flex-1 h-[3px] bg-border rounded-full overflow-hidden">
               <div className="h-full rounded-full transition-all duration-700"
@@ -571,71 +1236,86 @@ function ConversationsContent() {
               {selected.score}%
             </span>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
-            {messagesError ? (
-              <div className="flex flex-col items-center justify-center flex-1 gap-2">
-                <AlertCircle size={20} className="text-red-500" />
-                <p className="text-xs text-muted-foreground">{messagesError}</p>
-                <button
-                  onClick={() => setSelected({ ...selected })}
-                  className="text-xs text-brand-600 hover:text-brand-800 transition-colors">
-                  إعادة المحاولة
-                </button>
-              </div>
-            ) : messagesLoading
-              ? <div className="flex items-center justify-center flex-1">
-                  <Loader2 size={22} className="animate-spin text-brand-600" />
-                </div>
-              : messages.length === 0
-              ? <div className="flex items-center justify-center flex-1 text-[14px] text-muted-foreground">
-                  {t('conv.no_messages')}
-                </div>
-              : messages.map(msg => (
-                  <MessageBubble key={msg.id || `${msg.role}-${msg.createdAt}`}
-                    msg={msg} customerName={selected.customer?.name} />
-                ))
-            }
-          </div>
+          <ConversationMessagesScroll
+            className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 min-h-0"
+            conversationId={selected.id}
+            messages={messages}
+            messagesLoading={messagesLoading}
+            messagesError={messagesError}
+            onRetryMessages={() => setSelected({ ...selected })}
+            customerName={selected.customer?.name}
+          />
 
           {/* Manual Reply — mobile */}
-          {!agentIsActive && (
-            <div className="px-3 py-3 border-t border-border shrink-0">
-              <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                <p className="text-[11px] text-amber-700 font-medium">{t('conv.ai_off_manual')}</p>
+          {agentIsActive === false && (
+            <div className="px-4 py-3 border-t border-border shrink-0">
+              {/* Banner */}
+              <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg
+                bg-brand-600/10 border border-brand-600/20">
+                <div className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-pulse shrink-0" />
+                <p className="text-[11px] text-foreground font-medium flex-1">
+                  {t('conv.manual_mode_banner')}
+                </p>
+                <span className="text-[10px] text-brand-600 font-bold px-1.5 py-0.5
+                  rounded-md bg-brand-600/10 border border-brand-600/20">
+                  {t('conv.live')}
+                </span>
               </div>
               {replyError && (
                 <p className="text-[11px] text-red-500 mb-2 px-1">{replyError}</p>
               )}
+              {/* Input row */}
               <div className="flex items-end gap-2">
                 <textarea
                   value={replyText}
                   onChange={e => setReplyText(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleManualReply() } }}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      handleManualReply()
+                    }
+                  }}
                   placeholder={t('conv.reply_placeholder')}
                   rows={2}
                   maxLength={1000}
-                  className="flex-1 px-3 py-2 bg-secondary border border-border rounded-xl text-[14px] outline-none focus:border-brand-400 transition-colors resize-none leading-relaxed placeholder:text-muted-foreground/50"
+                  className="flex-1 px-3 py-2 bg-secondary border border-border rounded-xl
+                    text-[14px] outline-none focus:border-brand-400 transition-colors
+                    resize-none leading-relaxed placeholder:text-muted-foreground/50"
+                />
+                <MediaAttachButton
+                  conversationId={selected.id}
+                  disabled={replySending}
+                  onSent={handleRefreshMessages}
                 />
                 <button
                   onClick={handleManualReply}
                   disabled={replySending || !replyText.trim()}
-                  className="shrink-0 w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center transition-all hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
-                  {replySending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  className="shrink-0 w-10 h-10 rounded-xl bg-brand-600 text-white
+                    flex items-center justify-center transition-all hover:bg-brand-700
+                    active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                  {replySending
+                    ? <Loader2 size={16} className="animate-spin" />
+                    : <Send size={16} />
+                  }
                 </button>
               </div>
-              <p className="text-[10px] text-muted-foreground/50 text-left mt-1">{replyText.length}/1000</p>
+              <p className="text-[10px] text-muted-foreground/50 text-left mt-1">
+                {replyText.length}/1000
+              </p>
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-2 px-3 py-3 border-t border-border shrink-0"
+          <div className="grid grid-cols-3 gap-2 px-3 py-3 border-t border-border bg-secondary/10 shrink-0"
             style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}>
             {[
               { label: t('conv.messages'),  value: `${messages.length}` },
               { label: t('conv.duration'),  value: timeAgo(selected.createdAt, t) },
-              { label: t('conv.order_val'), value: selected.totalAmount ? `${selected.totalAmount}` : "—" },
+              {
+                label: convType === "product" ? t('conv.order_val') : t('conv.booking_val'),
+                value: selected.totalAmount ? `${selected.totalAmount}` : "—"
+              },
             ].map(item => (
-              <div key={item.label} className="bg-secondary/50 border border-border rounded-lg p-2 text-center">
+              <div key={item.label} className="bg-secondary/40 border border-border rounded-lg p-2 text-center">
                 <p className="text-[12px] text-muted-foreground mb-0.5">{item.label}</p>
                 <p className="text-[13px] font-bold text-foreground">{item.value}</p>
               </div>
@@ -658,6 +1338,7 @@ function ConversationsContent() {
           replyText={replyText} setReplyText={setReplyText}
           replySending={replySending} replyError={replyError}
           onManualReply={handleManualReply}
+          onRefreshMessages={handleRefreshMessages}
         />
         {newMsgToast && (
           <NewMessageToast conv={newMsgToast} onOpen={handleToastOpen} onClose={handleToastClose} />
@@ -683,6 +1364,7 @@ function ConversationsContent() {
         replyText={replyText} setReplyText={setReplyText}
         replySending={replySending} replyError={replyError}
         onManualReply={handleManualReply}
+        onRefreshMessages={handleRefreshMessages}
       />
       {newMsgToast && (
         <NewMessageToast conv={newMsgToast} onOpen={handleToastOpen} onClose={handleToastClose} />
@@ -692,6 +1374,8 @@ function ConversationsContent() {
 }
 
 /* ─────────────── Main Layout ─────────────── */
+// 🔧 FIX: Added onRefreshMessages to refresh messages after voice send
+// 📍 LOCATION: MainLayout props signature
 function MainLayout({
   convType, onTypeChange, productCount, serviceCount,
   stats, filtered, filter, setFilter,
@@ -701,6 +1385,7 @@ function MainLayout({
   unreadCount, onDeleteConversation,
   deleteModal, confirmDelete, cancelDelete,
   agentIsActive, replyText, setReplyText, replySending, replyError, onManualReply,
+  onRefreshMessages,
 }) {
   const { t } = useLanguage()
   // ✅ FIX: تعريف getStageLabel هنا لأن MainLayout تستخدمه في الـ map
@@ -725,7 +1410,7 @@ function MainLayout({
       </div>
 
       {/* ══ تاب منتجات / خدمات ══ */}
-      <div className="flex gap-1 p-1 bg-secondary/50 border border-border rounded-2xl w-fit">
+      <div className="flex gap-1 p-1 bg-secondary/40 border border-border rounded-xl w-fit">
         {[
           { key: "product", labelKey: "nav.products", icon: ShoppingBag, count: productCount },
           { key: "service", labelKey: "nav.services", icon: Wrench,      count: serviceCount },
@@ -771,8 +1456,8 @@ function MainLayout({
       </div>
 
       {/* ── فلاتر المرحلة + بحث ── */}
-      <div className="flex flex-col gap-2.5">
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none bg-card border border-border rounded-lg p-2">
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none bg-secondary/30 border border-border rounded-xl p-2">
           {filterButtons.map(f => (
             <button key={f.key}
               onClick={() => setFilter(f.key)}
@@ -797,7 +1482,7 @@ function MainLayout({
           <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder={convType === "product" ? t('conv.search_product') : t('conv.search_service')}
-            className="w-full pr-9 pl-3 py-2 bg-card border border-border rounded-lg text-[14px] outline-none focus:border-brand-400 transition-colors duration-200" />
+            className="w-full pr-9 pl-3 py-2 bg-card border border-border rounded-xl text-[14px] outline-none focus:border-brand-400 transition-colors duration-200" />
         </div>
       </div>
 
@@ -807,7 +1492,7 @@ function MainLayout({
         {/* القائمة */}
         <div className="flex flex-col gap-2">
           {filtered.length === 0 ? (
-            <div className="bg-card border border-border rounded-xl p-4 text-center">
+            <div className="border border-border rounded-xl p-4 text-center bg-secondary/20">
               <div className="w-11 h-11 rounded-xl bg-secondary flex items-center justify-center mx-auto mb-3">
                 {convType === "product"
                   ? <ShoppingBag size={22} className="text-brand-600" />
@@ -862,6 +1547,7 @@ function MainLayout({
               </p>
             </div>
           ) : (
+            //  LOCATION: MainLayout, DetailPanel call
             <DetailPanel
               selected={selected}
               messages={messages}
@@ -873,6 +1559,7 @@ function MainLayout({
               replyText={replyText} setReplyText={setReplyText}
               replySending={replySending} replyError={replyError}
               onManualReply={onManualReply}
+              onRefreshMessages={onRefreshMessages}
             />
           )}
         </div>
@@ -938,10 +1625,10 @@ function ConvCard({ conv, stageLabel, stageClassName, scoreColor, isSelected, on
   return (
     <div onClick={onSelect}
       className={cn(
-        "group bg-card border rounded-xl p-4 cursor-pointer transition-all duration-200 active:scale-[0.98]",
+        "group bg-card border rounded-xl p-4 cursor-pointer transition-all duration-200 active:scale-[0.99]",
         isSelected
-          ? "border-brand-400 shadow-md shadow-brand-600/10"
-          : "border-border hover:border-brand-300 hover:shadow-md hover:shadow-brand-600/5"
+          ? "border-brand-400 shadow-sm"
+          : "border-border hover:border-brand-300 hover:bg-secondary/20"
       )}
       style={{
         opacity: visible ? 1 : 0,
@@ -969,11 +1656,9 @@ function ConvCard({ conv, stageLabel, stageClassName, scoreColor, isSelected, on
         <div className="flex items-center gap-1.5 shrink-0">
           <span className={cn(
             "text-[11px] px-1.5 py-0.5 rounded-md border font-bold",
-            convType === "product"
-              ? "bg-brand-50 text-brand-600 border-brand-200"
-              : "bg-brand-100 text-brand-800 border-brand-200"
+            "bg-secondary text-brand-600 border-brand-200"
           )}>
-            {convType === "product" ? `${t('nav.products')} 🛍️` : `${t('nav.services')} 🔧`}
+            {convType === "product" ? t('nav.products') : t('nav.services')}
           </span>
           <span className="text-[12px] text-muted-foreground">{timeAgo(conv.updatedAt, t)}</span>
         </div>
@@ -992,7 +1677,7 @@ function ConvCard({ conv, stageLabel, stageClassName, scoreColor, isSelected, on
           <ScoreBar score={safeScore} color={scoreColor} />
           <button
             onClick={e => { e.stopPropagation(); onDelete(conv.id, conv.customer?.name) }}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors lg:opacity-0 lg:group-hover:opacity-100"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-red-600 hover:bg-secondary transition-colors lg:opacity-0 lg:group-hover:opacity-100"
             title={t('conv.delete_title')}>
             <Trash2 size={16} />
           </button>
@@ -1003,7 +1688,9 @@ function ConvCard({ conv, stageLabel, stageClassName, scoreColor, isSelected, on
 }
 
 /* ─────────────── Detail Panel ─────────────── */
-function DetailPanel({ selected, messages, messagesLoading, messagesError, onRetryMessages, convType, agentIsActive, replyText, setReplyText, replySending, replyError, onManualReply }) {
+// 🔧 FIX: Added onRefreshMessages to refresh messages after voice send
+// 📍 LOCATION: DetailPanel props signature
+function DetailPanel({ selected, messages, messagesLoading, messagesError, onRetryMessages, convType, agentIsActive, replyText, setReplyText, replySending, replyError, onManualReply, onRefreshMessages }) {
   const { t } = useLanguage()
   // ✅ useStageLabel مستدعى على مستوى الـ component مباشرة — Rules of Hooks
   const getStageLabel = useStageLabel()
@@ -1011,10 +1698,10 @@ function DetailPanel({ selected, messages, messagesLoading, messagesError, onRet
   const stageClassName = getStageClassName(selected.stage, selected.type)
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden transition-shadow duration-300 hover:shadow-lg h-full flex flex-col">
+    <div className="bg-card border border-border rounded-xl overflow-hidden h-full flex flex-col">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-secondary/30 shrink-0">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-secondary/20 shrink-0">
         <div className="flex items-center gap-2.5">
           <Avatar name={selected.customer?.name} size="md" />
           <div>
@@ -1022,11 +1709,9 @@ function DetailPanel({ selected, messages, messagesLoading, messagesError, onRet
               <p className="text-[14px] font-bold text-foreground">{selected.customer?.name}</p>
               <span className={cn(
                 "text-[11px] px-1.5 py-0.5 rounded-md border font-bold",
-                convType === "product"
-                  ? "bg-brand-50 text-brand-600 border-brand-200"
-                  : "bg-brand-100 text-brand-800 border-brand-200"
+                "bg-secondary text-brand-600 border-brand-200"
               )}>
-                {convType === "product" ? `${t('nav.products')} 🛍️` : `${t('nav.services')} 🔧`}
+                {convType === "product" ? t('nav.products') : t('nav.services')}
               </span>
             </div>
             <p className="text-[13px] text-muted-foreground">{selected.customer?.phone}</p>
@@ -1040,64 +1725,73 @@ function DetailPanel({ selected, messages, messagesLoading, messagesError, onRet
         </div>
       </div>
 
-      {/* الرسائل */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 min-h-0 max-h-80">
-        {messagesError ? (
-          <div className="flex flex-col items-center justify-center h-full gap-2">
-            <AlertCircle size={20} className="text-red-500" />
-            <p className="text-xs text-muted-foreground">{messagesError}</p>
-            <button
-              onClick={onRetryMessages}
-              className="text-xs text-brand-600 hover:text-brand-800 transition-colors">
-              إعادة المحاولة
-            </button>
-          </div>
-        ) : messagesLoading
-          ? <div className="flex items-center justify-center h-full">
-              <Loader2 size={22} className="animate-spin text-brand-600" />
-            </div>
-          : messages.length === 0
-          ? <div className="flex items-center justify-center h-full text-[14px] text-muted-foreground">
-              {t('conv.no_messages')}
-            </div>
-          : messages.map(msg => (
-              <MessageBubble
-                key={msg.id || `${msg.role}-${msg.createdAt}`}
-                msg={msg}
-                customerName={selected.customer?.name}
-              />
-            ))
-        }
-      </div>
+      {/* الرسائل — تمرير تلقائي لآخر رسالة */}
+      <ConversationMessagesScroll
+        className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 min-h-0 max-h-80"
+        conversationId={selected.id}
+        messages={messages}
+        messagesLoading={messagesLoading}
+        messagesError={messagesError}
+        onRetryMessages={onRetryMessages}
+        customerName={selected.customer?.name}
+      />
 
       {/* Manual Reply — desktop */}
       {agentIsActive === false && (
         <div className="px-4 py-3 border-t border-border shrink-0">
-          <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-            <p className="text-[11px] text-amber-700 font-medium">{t('conv.ai_off_manual')}</p>
+          {/* Banner */}
+          <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg
+            bg-brand-600/10 border border-brand-600/20">
+            <div className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-pulse shrink-0" />
+            <p className="text-[11px] text-foreground font-medium flex-1">
+              {t('conv.manual_mode_banner')}
+            </p>
+            <span className="text-[10px] text-brand-600 font-bold px-1.5 py-0.5
+              rounded-md bg-brand-600/10 border border-brand-600/20">
+              {t('conv.live')}
+            </span>
           </div>
           {replyError && (
             <p className="text-[11px] text-red-500 mb-2 px-1">{replyError}</p>
           )}
+          {/* Input row */}
           <div className="flex items-end gap-2">
             <textarea
               value={replyText}
               onChange={e => setReplyText(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onManualReply() } }}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  onManualReply()
+                }
+              }}
               placeholder={t('conv.reply_placeholder')}
               rows={2}
               maxLength={1000}
-              className="flex-1 px-3 py-2 bg-secondary border border-border rounded-xl text-[14px] outline-none focus:border-brand-400 transition-colors resize-none leading-relaxed placeholder:text-muted-foreground/50"
+              className="flex-1 px-3 py-2 bg-secondary border border-border rounded-xl
+                text-[14px] outline-none focus:border-brand-400 transition-colors
+                resize-none leading-relaxed placeholder:text-muted-foreground/50"
+            />
+            <MediaAttachButton
+              conversationId={selected.id}
+              disabled={replySending}
+              onSent={onRefreshMessages}
             />
             <button
               onClick={onManualReply}
               disabled={replySending || !replyText.trim()}
-              className="shrink-0 w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center transition-all hover:bg-brand-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
-              {replySending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              className="shrink-0 w-10 h-10 rounded-xl bg-brand-600 text-white
+                flex items-center justify-center transition-all hover:bg-brand-700
+                active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+              {replySending
+                ? <Loader2 size={16} className="animate-spin" />
+                : <Send size={16} />
+              }
             </button>
           </div>
-          <p className="text-[10px] text-muted-foreground/50 text-left mt-1">{replyText.length}/1000</p>
+          <p className="text-[10px] text-muted-foreground/50 text-left mt-1">
+            {replyText.length}/1000
+          </p>
         </div>
       )}
 
@@ -1113,7 +1807,7 @@ function DetailPanel({ selected, messages, messagesLoading, messagesError, onRet
             },
           ].map(item => (
             <div key={item.label}
-              className="bg-secondary/50 border border-border rounded-lg p-2.5 text-center hover:bg-secondary transition-colors duration-150">
+              className="bg-secondary/40 border border-border rounded-lg p-2.5 text-center">
               <p className="text-[12px] text-muted-foreground mb-0.5">{item.label}</p>
               <p className="text-[14px] font-bold text-foreground">{item.value}</p>
             </div>
@@ -1147,7 +1841,7 @@ function NewMessageToast({ conv, onOpen, onClose }) {
         opacity: visible ? 1 : 0,
         transition: "transform 0.38s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s ease",
       }}
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-60 w-[340px] max-w-[calc(100vw-24px)] bg-card border border-brand-600/25 rounded-2xl shadow-2xl shadow-brand-600/10 cursor-pointer overflow-hidden"
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-60 w-[340px] max-w-[calc(100vw-24px)] bg-card border border-border rounded-2xl shadow-lg cursor-pointer overflow-hidden"
     >
       <style>{`
         @keyframes toast-shrink {

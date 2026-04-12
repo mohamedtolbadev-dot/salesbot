@@ -6,10 +6,10 @@ import { statsAPI, conversationsAPI, agentAPI } from "@/lib/api"
 import { getStageConfig, getStageLabel, getStageClassName, getScoreColor, getInitials } from "@/lib/helpers"
 import { cn } from "@/lib/utils"
 import {
-  Bot, TrendingUp, Plus, ChevronLeft, MessageCircle,
+  Bot, Plus, ChevronLeft, MessageCircle,
   BarChart3, Sparkles, ArrowUpRight, ShoppingBag,
   AlertCircle, RefreshCw, Activity, Zap, Settings2,
-  Brain, Star, Globe, Languages, Wrench,
+  Brain, Globe, Languages, Wrench,
 } from "lucide-react"
 import { useLanguage } from "@/contexts/LanguageContext"
 
@@ -798,7 +798,7 @@ export default function DashboardPage() {
       setConversations(conversationsData.data?.conversations || [])
       setAgent(agentData.data)
     } catch (err) {
-      setError("error")
+      setError(err?.message || "error")
     } finally {
       setLoading(false)
     }
@@ -836,6 +836,7 @@ export default function DashboardPage() {
   /* ── Main render ── */
   return (
     <div className="flex flex-col gap-5">
+      <style dangerouslySetInnerHTML={{ __html: globalStyles }} />
 
       {/* ── 1. Header ── */}
       <div className="flex justify-between items-center">
@@ -956,7 +957,6 @@ export default function DashboardPage() {
             </thead>
             <tbody>
               {filteredConversations.slice(0, 5).map((conv, idx) => {
-                const stage = getStageConfig(conv.stage)
                 const scoreColor = getScoreColor(conv.score)
                 const lastMessage = conv.messages?.[0]?.content || t('conv.no_messages')
                 return (
@@ -1019,7 +1019,6 @@ export default function DashboardPage() {
           {/* Mobile Cards */}
           <div className="md:hidden divide-y divide-border">
             {filteredConversations.slice(0, 5).map((conv) => {
-              const stage = getStageConfig(conv.stage)
               const scoreColor = getScoreColor(conv.score)
               return (
                 <div

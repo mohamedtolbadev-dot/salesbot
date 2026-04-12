@@ -111,8 +111,10 @@ export default function VerifyPage() {
       setLoading(true)
       setError(null)
       const res = await authAPI.verifyOtp({ email, code })
-      localStorage.setItem("token", res.data.token)
-      localStorage.setItem("user", JSON.stringify(res.data.user))
+      const token = res?.data?.token || res?.token
+      const user = res?.data?.user || res?.user
+      if (token) localStorage.setItem("token", token)
+      if (user) localStorage.setItem("user", JSON.stringify(user))
       sessionStorage.removeItem("otp_email")
       sessionStorage.removeItem("otp_masked")
       sessionStorage.removeItem("otp_dev")

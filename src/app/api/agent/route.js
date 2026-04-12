@@ -37,7 +37,7 @@ export async function PUT(request) {
     const body = await request.json()
     const {
       name, domain, style, language,
-      isActive, instructions,
+      isActive, instructions, productInstructions, serviceInstructions,
       whatsappPhoneId, whatsappToken,
       selectedProductId, selectedServiceId,
       mode,
@@ -67,6 +67,8 @@ export async function PUT(request) {
         ...(language !== undefined && { language }),
         ...(isActive !== undefined && { isActive }),
         ...(instructions !== undefined && { instructions }),
+        ...(productInstructions !== undefined && { productInstructions }),
+        ...(serviceInstructions !== undefined && { serviceInstructions }),
         ...(whatsappPhoneId !== undefined && { whatsappPhoneId }),
         ...(whatsappToken !== undefined && { whatsappToken }),
         // ✅ "" تتحول null — لا تحفظ string فارغة في DB

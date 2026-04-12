@@ -16,73 +16,97 @@ import { useLanguage } from "@/contexts/LanguageContext"
 function CustomersSkeleton() {
   return (
     <div className="flex flex-col gap-5 pb-6">
-      {/* ── Header ── */}
+      <style>{`
+        @keyframes shimmer {
+          0%   { background-position: -700px 0; }
+          100% { background-position:  700px 0; }
+        }
+        .sk {
+          border-radius: 10px;
+          background: linear-gradient(90deg,
+            rgba(0,0,0,0.06) 25%,
+            rgba(0,0,0,0.12) 50%,
+            rgba(0,0,0,0.06) 75%
+          );
+          background-size: 700px 100%;
+          animation: shimmer 1.5s ease-in-out infinite;
+          flex-shrink: 0;
+        }
+        .dark .sk {
+          background: linear-gradient(90deg,
+            rgba(255,255,255,0.06) 25%,
+            rgba(255,255,255,0.14) 50%,
+            rgba(255,255,255,0.06) 75%
+          );
+          background-size: 700px 100%;
+        }
+        .sk-brand {
+          border-radius: 10px;
+          background: linear-gradient(90deg,
+            rgba(83,74,183,0.12) 25%,
+            rgba(83,74,183,0.26) 50%,
+            rgba(83,74,183,0.12) 75%
+          );
+          background-size: 700px 100%;
+          animation: shimmer 1.5s ease-in-out infinite;
+          flex-shrink: 0;
+        }
+      `}</style>
+
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="sk w-8 h-8 rounded-lg flex-shrink-0" />
+          <div className="sk w-9 h-9 rounded-lg" />
           <div className="flex flex-col gap-1.5">
-            <div className="sk h-4 w-[70px]" />
-            <div className="sk h-[11px] w-[110px]" />
+            <div className="sk h-[14px] w-[120px]" />
+            <div className="sk h-[10px] w-[160px]" />
           </div>
         </div>
-        <div className="sk h-8 w-[90px] rounded-lg" />
       </div>
 
-      {/* ── Stats (3 cols) ── */}
+      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {[
-          { label: 88,  val: 52, sub: 100 },
-          { label: 80,  val: 44, sub: 80  },
-          { label: 96,  val: 64, sub: 88  },
-        ].map((s, i) => (
-          <div
-            key={i}
-            className="bg-card border border-border rounded-xl p-5 flex flex-col gap-2.5"
-            style={{ animationDelay: `${i * 60}ms` }}
-          >
+        {[[88,52,100],[80,44,80],[96,64,88]].map(([label,val,sub], i) => (
+          <div key={i} className="bg-card border border-border rounded-xl p-5 flex flex-col gap-2.5">
             <div className="flex items-start justify-between">
-              <div className="sk h-[11px]" style={{ width: s.label }} />
+              <div className="sk h-[10px]" style={{ width: label }} />
               <div className="sk w-8 h-8 rounded-lg" />
             </div>
-            <div className="sk h-[26px] rounded-md" style={{ width: s.val }} />
-            {/* sub line — brand tinted like TrendingUp row */}
-            <div className="sk-brand h-[11px]" style={{ width: s.sub }} />
+            <div className="sk h-[26px] rounded-md" style={{ width: val }} />
+            <div className="sk-brand h-[10px]" style={{ width: sub }} />
           </div>
         ))}
       </div>
 
-      {/* ── Filter Buttons ── */}
+      {/* Type Tabs */}
+      <div className="flex gap-1 p-1 bg-secondary/50 border border-border/60 rounded-xl w-fit">
+        {[110, 124, 124].map((w, i) => (
+          <div key={i} className="sk h-[34px] rounded-lg" style={{ width: w }} />
+        ))}
+      </div>
+
+      {/* Tag Filters */}
       <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-        {[66, 52, 56, 68, 72].map((w, i) => (
+        {[66,52,56,68,72].map((w, i) => (
           <div key={i} className="sk h-[30px] rounded-lg flex-shrink-0" style={{ width: w }} />
         ))}
       </div>
 
-      {/* ── Search ── */}
+      {/* Search */}
       <div className="relative bg-card border border-border rounded-lg px-3 py-2.5 flex items-center">
-        <div className="sk absolute right-3 top-1/2 -translate-y-1/2 w-[14px] h-[14px] rounded" />
-        <div className="sk h-3 w-[160px] mr-5" />
+        <div className="sk absolute right-3 top-1/2 -translate-y-1/2 w-[16px] h-[16px] rounded" />
+        <div className="sk h-3 w-[220px] mr-7" />
       </div>
 
-      {/* ── Mobile Cards (md:hidden) ── */}
+      {/* Mobile Cards */}
       <div className="flex flex-col gap-2 md:hidden">
-        {[
-          { name: 88, sub: 160 },
-          { name: 72, sub: 140 },
-          { name: 96, sub: 150 },
-          { name: 80, sub: 130 },
-          { name: 76, sub: 145 },
-        ].map((c, i) => (
-          <div
-            key={i}
-            className="bg-card border border-border rounded-xl p-3 flex items-center gap-3"
-            style={{ animationDelay: `${i * 40}ms` }}
-          >
-            <div className="sk w-9 h-9 rounded-full flex-shrink-0" />
+        {[88,72,96,80,76].map((name, i) => (
+          <div key={i} className="bg-card border border-border rounded-xl p-4 flex items-center gap-3">
+            <div className="sk w-9 h-9 rounded-full" />
             <div className="flex-1 min-w-0 flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
-                <div className="sk h-[13px]" style={{ width: c.name }} />
-                <div className="sk h-[20px] w-[52px] rounded-md flex-shrink-0" />
+                <div className="sk h-[13px]" style={{ width: name }} />
+                <div className="sk h-[20px] w-[52px] rounded-md" />
               </div>
               <div className="sk h-[10px] w-[110px]" />
               <div className="flex items-center gap-3">
@@ -95,51 +119,26 @@ function CustomersSkeleton() {
         ))}
       </div>
 
-      {/* ── Desktop Table (hidden md:block) ── */}
+      {/* Desktop Table */}
       <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden">
-        {/* thead */}
         <div className="grid px-4 py-2.5 border-b border-border bg-secondary/40"
           style={{ gridTemplateColumns: "1.8fr 1.2fr 0.8fr 1fr 1fr 0.8fr", gap: 12 }}>
-          {[48, 36, 44, 72, 60, 44].map((w, i) => (
+          {[48,36,44,72,60,44].map((w, i) => (
             <div key={i} className="sk h-[10px]" style={{ width: w }} />
           ))}
         </div>
-        {/* rows */}
-        {[
-          { name: 88,  phone: 100, orders: 48, spent: true,  date: 64,  tag: 52 },
-          { name: 72,  phone: 110, orders: 40, spent: true,  date: 56,  tag: 44 },
-          { name: 96,  phone: 96,  orders: 52, spent: false, date: 68,  tag: 56 },
-          { name: 80,  phone: 104, orders: 44, spent: true,  date: 60,  tag: 48 },
-          { name: 84,  phone: 92,  orders: 48, spent: false, date: 72,  tag: 60 },
-          { name: 76,  phone: 108, orders: 44, spent: true,  date: 58,  tag: 52 },
-        ].map((r, i) => (
-          <div
-            key={i}
-            className="grid items-center px-4 py-3.5 border-t border-border"
-            style={{
-              gridTemplateColumns: "1.8fr 1.2fr 0.8fr 1fr 1fr 0.8fr",
-              gap: 12,
-              animationDelay: `${i * 30}ms`,
-            }}
-          >
-            {/* name + avatar */}
+        {[[88,100,48,true,64,52],[72,110,40,true,56,44],[96,96,52,false,68,56],[80,104,44,true,60,48],[84,92,48,false,72,60]].map(([name,phone,orders,spent,date,tag], i) => (
+          <div key={i} className="grid items-center px-4 py-3.5 border-t border-border"
+            style={{ gridTemplateColumns: "1.8fr 1.2fr 0.8fr 1fr 1fr 0.8fr", gap: 12 }}>
             <div className="flex items-center gap-3">
               <div className="sk w-8 h-8 rounded-full flex-shrink-0" />
-              <div className="sk h-[13px]" style={{ width: r.name }} />
+              <div className="sk h-[13px]" style={{ width: name }} />
             </div>
-            {/* phone */}
-            <div className="sk h-[11px]" style={{ width: r.phone }} />
-            {/* orders */}
-            <div className="sk h-[11px]" style={{ width: r.orders }} />
-            {/* spent — brand tinted if has value */}
-            <div
-              className={r.spent ? "sk-brand" : "sk"}
-              style={{ height: 13, width: 72, borderRadius: 4 }}
-            />
-            {/* last seen */}
-            <div className="sk h-[11px]" style={{ width: r.date }} />
-            {/* tag badge */}
-            <div className="sk h-[22px] rounded-md" style={{ width: r.tag }} />
+            <div className="sk h-[10px]" style={{ width: phone }} />
+            <div className="sk h-[10px]" style={{ width: orders }} />
+            <div className={spent ? "sk-brand" : "sk"} style={{ height: 12, width: 72, borderRadius: 4 }} />
+            <div className="sk h-[10px]" style={{ width: date }} />
+            <div className="sk h-[22px] rounded-md" style={{ width: tag }} />
           </div>
         ))}
       </div>

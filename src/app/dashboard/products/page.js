@@ -15,6 +15,27 @@ import { useLanguage } from "@/contexts/LanguageContext"
 function ProductsSkeleton() {
   return (
     <div className="flex flex-col gap-5 pb-6">
+      <style>{`
+        @keyframes sk-shimmer { 0%{background-position:-700px 0} 100%{background-position:700px 0} }
+        .sk{
+          border-radius:10px;
+          background:linear-gradient(90deg,rgba(0,0,0,.06) 25%,rgba(0,0,0,.12) 50%,rgba(0,0,0,.06) 75%);
+          background-size:700px 100%;
+          animation:sk-shimmer 1.5s ease-in-out infinite;
+          flex-shrink:0;
+        }
+        .dark .sk{
+          background:linear-gradient(90deg,rgba(255,255,255,.06) 25%,rgba(255,255,255,.14) 50%,rgba(255,255,255,.06) 75%);
+          background-size:700px 100%;
+        }
+        .sk-brand{
+          border-radius:10px;
+          background:linear-gradient(90deg,rgba(83,74,183,.12) 25%,rgba(83,74,183,.26) 50%,rgba(83,74,183,.12) 75%);
+          background-size:700px 100%;
+          animation:sk-shimmer 1.5s ease-in-out infinite;
+          flex-shrink:0;
+        }
+      `}</style>
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -51,7 +72,7 @@ function ProductsSkeleton() {
       </div>
 
       {/* ── Search ── */}
-      <div className="relative bg-card border border-border rounded-lg px-3 py-2.5.5 flex items-center">
+      <div className="relative bg-card border border-border rounded-lg px-3 py-2.5 flex items-center">
         <div className="sk absolute right-3 top-1/2 -translate-y-1/2 w-[14px] h-[14px] rounded" />
         <div className="sk h-3 w-[140px] mr-5" />
       </div>

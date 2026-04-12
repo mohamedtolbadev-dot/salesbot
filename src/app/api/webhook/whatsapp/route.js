@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma"
 import {
   parseAllIncomingMessages,
   sendWhatsAppMessage,
-  transcribeWhatsAppAudio
 } from "@/lib/whatsapp"
 import { processIncomingMessage } from "@/lib/aiAgent"
 import { sanitizeInput } from "@/lib/helpers"
@@ -120,6 +119,9 @@ export async function POST(request) {
 
         console.log(`✅ [${incoming.from}] Agent found: ${agent.id}, userId: ${agent.userId}`)
 
+        // نخزّن معرّف الميديا (صوت/صورة/مستند) لعرضها في الداشبورد
+        const incomingMediaId = incoming.mediaId || incoming.audioId || null
+
         if (!agent.isActive) {
           console.log(`⏸️ [${incoming.from}] Agent متوقف — حفظ الرسالة بدون رد AI`)
           const cleanText = sanitizeInput(incoming.text)
@@ -135,7 +137,12 @@ export async function POST(request) {
             })
             if (!conversation) return
             await prisma.message.create({
-              data: { conversationId: conversation.id, role: "USER", content: cleanText }
+              data: {
+                conversationId: conversation.id,
+                role: "USER",
+                content: cleanText,
+                ...(incomingMediaId ? { whatsappMediaId: incomingMediaId } : {}),
+              }
             })
             await prisma.conversation.update({
               where: { id: conversation.id },
@@ -200,28 +207,6 @@ export async function POST(request) {
         // ✅ معالجة الرسالة + توليد رد AI
         console.log(`🤖 [${incoming.from}] Calling processIncomingMessage...`)
 
-        // 🎤 تحويل الرسالة الصوتية لنص عبر Whisper
-        if (incoming.type === "audio" && incoming.audioId) {
-          console.log(`🎤 [${incoming.from}] تحويل رسالة صوتية...`)
-          const transcription = await transcribeWhatsAppAudio({
-            token: agent.whatsappToken,
-            audioId: incoming.audioId,
-          })
-          if (transcription) {
-            incoming.text = transcription
-            console.log(`✅ [${incoming.from}] تم تحويل الصوت: "${transcription.substring(0, 60)}..."`)
-          } else {
-            console.log(`⚠️ [${incoming.from}] OPENAI_API_KEY غير مضبوط — طلب الكتابة`)
-            await sendWhatsAppMessage({
-              phoneId: agent.whatsappPhoneId,
-              token: agent.whatsappToken,
-              to: incoming.from,
-              message: "عذراً ما قدرتش نسمع الرسالة الصوتية 🎤، ممكن تكتب رسالتك؟ 😊",
-            })
-            return
-          }
-        }
-
         // ✅ تنظيف الرسالة — منع Prompt Injection
         const sanitizedText = sanitizeInput(incoming.text)
         if (!sanitizedText) {
@@ -234,6 +219,7 @@ export async function POST(request) {
           customerPhone: incoming.from,
           customerName: incoming.customerName,
           messageText: sanitizedText,
+          whatsappMediaId: incomingMediaId,
         })
         console.log(`🤖 [${incoming.from}] processIncomingMessage result:`, { skipped: result?.skipped, hasReply: !!result?.reply, replyLength: result?.reply?.length })
 
@@ -280,29 +266,49 @@ export async function POST(request) {
 
         // ✅ إرسال الصور إذا طلبها العميل
         if (result.imageUrls && result.imageUrls.length > 0) {
-          console.log(`📤 إرسال ${result.imageUrls.length} صورة لـ ${incoming.from}...`)
-          for (const imageUrl of result.imageUrls) {
-            if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.trim().startsWith('https://')) {
-              console.warn("⚠️ صورة غير صحيحة:", imageUrl)
-              continue
+          const validImageUrls = [...new Set(
+            result.imageUrls
+              .filter(url => typeof url === "string")
+              .map(url => url.trim())
+              .filter(url => /^https?:\/\//i.test(url))
+          )]
+
+          if (validImageUrls.length > 0) {
+            console.log(`📤 إرسال ${validImageUrls.length} صورة لـ ${incoming.from}...`)
+          }
+
+          for (const [index, imageUrl] of validImageUrls.entries()) {
+            let sentImage = false
+
+            // Retry أقوى مع backoff لأن WhatsApp API غالباً يرفض الصور المتتالية بسرعة
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              const imgResult = await sendWhatsAppMessage({
+                phoneId: agent.whatsappPhoneId,
+                token: agent.whatsappToken,
+                to: incoming.from,
+                message: imageUrl,
+                type: "image",
+              })
+
+              if (imgResult.success) {
+                sentImage = true
+                console.log(`📸 صورة ${index + 1}/${validImageUrls.length} مرسلة لـ ${incoming.from} (attempt ${attempt})`)
+                break
+              }
+
+              if (attempt < 3) {
+                const retryDelayMs = 2000 * attempt
+                await new Promise(resolve => setTimeout(resolve, retryDelayMs))
+              }
             }
-            
-            const imgResult = await sendWhatsAppMessage({
-              phoneId: agent.whatsappPhoneId,
-              token: agent.whatsappToken,
-              to: incoming.from,
-              message: imageUrl.trim(),
-              type: "image",
-            })
-            
-            if (imgResult.success) {
-              console.log(`📸 صورة مرسلة لـ ${incoming.from}`)
-            } else {
-              console.error(`❌ فشل إرسال صورة لـ ${incoming.from}`)
+
+            if (!sentImage) {
+              const masked = incoming.from?.length > 4 ? `******${incoming.from.slice(-4)}` : "****"
+              console.error(`❌ فشل إرسال صورة ${index + 1}/${validImageUrls.length} للرقم ${masked} بعد 3 محاولات`)
             }
-            
-            // تأخير صغير بين الصور
-            await new Promise(resolve => setTimeout(resolve, 500))
+
+            // Pause أكبر بين الصور لتفادي rate-limit من Meta
+            await new Promise(resolve => setTimeout(resolve, 2500))
           }
         }
 

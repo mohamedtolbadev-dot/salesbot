@@ -26,7 +26,7 @@ export async function PUT(request, { params }) {
 
   try {
     const body = await request.json()
-    const { customerName, customerPhone, productName, quantity, totalAmount, address, notes, trackingNumber } = body
+    const { customerName, customerPhone, productName, quantity, totalAmount, city, address, notes, trackingNumber } = body
 
     const existing = await prisma.order.findFirst({ where: { id, userId: user.id } })
     if (!existing) return errorResponse("الطلبية غير موجودة", 404)
@@ -39,6 +39,7 @@ export async function PUT(request, { params }) {
         ...(productName !== undefined && { productName }),
         ...(quantity !== undefined && { quantity: Number(quantity) }),
         ...(totalAmount !== undefined && { totalAmount: Number(totalAmount) }),
+        ...(city !== undefined && { city }),
         ...(address !== undefined && { address }),
         ...(notes !== undefined && { notes }),
         ...(trackingNumber !== undefined && { trackingNumber }),

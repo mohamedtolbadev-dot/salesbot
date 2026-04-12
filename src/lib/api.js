@@ -4,11 +4,15 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
 
 // Get token from localStorage
 function getToken() {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("token")
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem("token")
+    const token = typeof raw === "string" ? raw.trim() : ""
+    if (!token || token === "undefined" || token === "null") return null
     return token
+  } catch {
+    return null
   }
-  return null
 }
 
 // Main fetch wrapper
@@ -46,6 +50,18 @@ async function fetchAPI(endpoint, options = {}) {
     }
 
     if (!response.ok) {
+      // If auth is invalid/expired → redirect to login immediately
+      if (response.status === 401 && typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("token")
+          localStorage.removeItem("user")
+        } catch {}
+        // Redirect only once (avoid multiple redirects from parallel requests)
+        if (!window.__redirectingToLogin) {
+          window.__redirectingToLogin = true
+          window.location.href = "/login"
+        }
+      }
       throw new Error(data.message || data.error || "Request failed")
     }
 

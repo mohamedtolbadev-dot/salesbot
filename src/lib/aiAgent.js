@@ -10,13 +10,11 @@ function normalizePhone(phone) {
   
   // ✅ [FIX] دعم الأرقام الدولية (فرنسا، أمريكا/كندا)
   if (normalized.startsWith("33") && normalized.length === 11) {
-    // رقم فرنسي — خليه كما هو
-    console.log(`✅ [FIX] normalizePhone: رقم فرنسي ${normalized}`)
+    // Phone normalized (FR)
     return normalized
   }
   if (normalized.startsWith("1") && normalized.length === 11) {
-    // رقم أمريكي/كندي — خليه كما هو
-    console.log(`✅ [FIX] normalizePhone: رقم أمريكي/كندي ${normalized}`)
+    // Phone normalized (US/CA)
     return normalized
   }
   
@@ -61,6 +59,46 @@ function getAppointmentFallbackMessage(status, { customerName, date, time, servi
   return messages[lang][status] || messages["french"][status]
 }
 
+/**
+ * Render template with variable substitution
+ * Supports: {name}, {{name}}, {service}, {{service}}, {date}, {{date}}, {time}, {{time}}, {status}, {{status}}
+ * Also supports: {product}, {{product}}, {amount}, {{amount}}, {tracking}, {{tracking}}, {trackingUrl}, {{trackingUrl}}
+ * Falls back to empty string if template is null/undefined or empty after trim
+ */
+export function renderTemplate(template, vars) {
+  // ✅ Hardened: check for null/undefined/empty after trim
+  if (!template || typeof template !== 'string' || !template.trim()) return null
+
+  let result = template
+  const mappings = {
+    // Support both {var} and {{var}} formats for backward compatibility
+    '\\{\\{name\\}\\}': vars.customerName || vars.name || '',
+    '\\{name\\}': vars.customerName || vars.name || '',
+    '\\{\\{service\\}\\}': vars.serviceName || vars.service || '',
+    '\\{service\\}': vars.serviceName || vars.service || '',
+    '\\{\\{product\\}\\}': vars.productName || vars.product || '',
+    '\\{product\\}': vars.productName || vars.product || '',
+    '\\{\\{date\\}\\}': vars.date || '',
+    '\\{date\\}': vars.date || '',
+    '\\{\\{time\\}\\}': vars.time || '',
+    '\\{time\\}': vars.time || '',
+    '\\{\\{status\\}\\}': vars.status || '',
+    '\\{status\\}': vars.status || '',
+    '\\{\\{amount\\}\\}': String(vars.totalAmount || vars.amount || ''),
+    '\\{amount\\}': String(vars.totalAmount || vars.amount || ''),
+    '\\{\\{tracking\\}\\}': vars.trackingNumber || vars.tracking || '',
+    '\\{tracking\\}': vars.trackingNumber || vars.tracking || '',
+    '\\{\\{trackingUrl\\}\\}': vars.trackingUrl || '',
+    '\\{trackingUrl\\}': vars.trackingUrl || '',
+  }
+
+  for (const [pattern, value] of Object.entries(mappings)) {
+    result = result.replace(new RegExp(pattern, 'g'), value)
+  }
+
+  return result.trim()
+}
+
 // دالة توليد رسالة تحديث حالة الموعد
 export async function generateStatusUpdateMessage({
   agent,
@@ -70,10 +108,10 @@ export async function generateStatusUpdateMessage({
 }) {
   try {
     const statusLabels = {
-      PENDING:   { label: "في الانتظار", emoji: "⏳" },
-      CONFIRMED: { label: "مؤكد ✅", emoji: "✅" },
-      CANCELLED: { label: "ملغي ❌", emoji: "❌" },
-      COMPLETED: { label: "مكتمل 🎉", emoji: "🎉" },
+      PENDING:   { label: "في الانتظار", emoji: "" },
+      CONFIRMED: { label: "مؤكد ", emoji: "" },
+      CANCELLED: { label: "ملغي ", emoji: "" },
+      COMPLETED: { label: "مكتمل ", emoji: "" },
     }
 
     const statusInfo = statusLabels[newStatus] || statusLabels.PENDING
@@ -86,6 +124,32 @@ export async function generateStatusUpdateMessage({
       hour: "2-digit",
       minute: "2-digit",
     })
+
+    // [NEW] Try custom template first (from agent settings)
+    const templateMap = {
+      CONFIRMED: agent?.appointmentConfirmMessage,
+      CANCELLED: agent?.appointmentCancellationMessage,
+      COMPLETED: agent?.appointmentConfirmMessage, // reuse confirm for completion
+      PENDING:   agent?.appointmentConfirmMessage, // reuse for pending
+    }
+
+    const customTemplate = templateMap[newStatus]
+    if (customTemplate) {
+      const renderedMessage = renderTemplate(customTemplate, {
+        name: customerName,
+        customerName,
+        service: appointment.serviceName,
+        serviceName: appointment.serviceName,
+        date,
+        time,
+        status: statusInfo.label,
+      })
+
+      if (renderedMessage && renderedMessage.length > 5) {
+        console.log(` [StatusUpdate] Using custom template for ${newStatus}`)
+        return { message: renderedMessage, usedTemplate: true }
+      }
+    }
 
     const systemPrompt = `أنت ${agent?.name || "مساعد"}، مساعد ذكي للمتجر.
 
@@ -161,8 +225,30 @@ export async function generateStatusUpdateMessage({
       }
     )
 
+    // ✅ OpenRouter validation parity (same as generateAIReply)
+    if (!response.ok) {
+      // ✅ PII Safe: don't log error response body
+      console.error(`❌ OpenRouter HTTP ${response.status}: API error (body hidden for PII safety)`)
+      throw new Error(`OpenRouter HTTP ${response.status}`)
+    }
+
     const data = await response.json()
-    let message = data.choices?.[0]?.message?.content
+
+    // ✅ Validate response structure (same as generateAIReply)
+    if (!data || typeof data !== 'object') {
+      console.error('❌ Invalid JSON response from OpenRouter')
+      throw new Error('Invalid JSON response')
+    }
+    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+      console.error('❌ Empty or missing choices array')
+      throw new Error('Empty choices array')
+    }
+    if (!data.choices[0]?.message?.content) {
+      console.error('❌ Missing message content in response')
+      throw new Error('Missing message content')
+    }
+
+    let message = data.choices[0].message.content
 
     if (!message) {
       message = getAppointmentFallbackMessage(newStatus, {
@@ -172,15 +258,8 @@ export async function generateStatusUpdateMessage({
 
     return { message: message.trim() }
   } catch (error) {
-    console.error("❌ generateStatusUpdateMessage error:", error)
-    console.error("❌ Error details:", {
-      message: error.message,
-      stack: error.stack,
-      agent: agent?.name,
-      appointment: appointment?.id,
-      newStatus,
-      customerName,
-    })
+    // ✅ PII Safe: log only status code and short ID, not error content
+    console.error(`❌ generateStatusUpdateMessage error: status=${newStatus}, appt=${appointment?.id?.slice(0, 6)}...`)
     // Return fallback message on error
     return {
       message: `مرحبا ${customerName || "عزيزي"}!
@@ -217,9 +296,8 @@ function parseImages(imagesField) {
 function extractDateFromMessages(allMessages) {
   const text = allMessages
 
-  // 🔍 DEBUG
-  console.log(`🔍 [extractDateFromMessages] Input type: ${typeof text}, length: ${text?.length || 0}`)
-  console.log(`🔍 [extractDateFromMessages] Input preview: "${text?.substring(0, 100)}..."`)
+  // 🔍 DEBUG (sanitized)
+  console.log(`🔍 [extractDateFromMessages] Input length: ${text?.length || 0}`)
 
   // ─── 1. أرقام صريحة: 2024-01-15 أو 15/01/2024 أو 15-01-2024 ───
   const numericPatterns = [
@@ -239,10 +317,10 @@ function extractDateFromMessages(allMessages) {
       const parsed = new Date(normalized)
       const now = new Date()
       if (!isNaN(parsed.getTime()) && parsed >= now) {
-        console.log(`📅 [extractDate] Numeric pattern matched: ${match[1]} → ${normalized}`)
+        console.log(`📅 [extractDate] Numeric pattern matched`)
         return parsed
       } else if (!isNaN(parsed.getTime())) {
-        console.log(`⚠️ [extractDate] Date is in the past: ${match[1]} → ${normalized}, will use fallback`)
+        console.log(`⚠️ [extractDate] Date is in the past, will use fallback`)
       }
     }
   }
@@ -295,9 +373,8 @@ function extractDateFromMessages(allMessages) {
     }
   }
 
-  // 🔍 DEBUG: Log if no day matched
-  console.log(`🔍 [extractDate] Checking day names in text: "${text?.substring(0, 50)}..."`)
-  console.log(`🔍 [extractDate] Day names checked: ${dayMap.map(d => d.names.join('/')).join(', ')}`)
+  // 🔍 DEBUG: Log if no day matched (sanitized)
+  console.log(`🔍 [extractDate] No day matched, checked ${dayMap.length} day patterns`)
 
   // ─── 6. "هذا الأسبوع" / "الأسبوع الجاي" ───
   if (/هذا الأسبوع|هاد الأسبوع|هاد لأسبوع/i.test(text)) {
@@ -408,7 +485,7 @@ function extractQuantityFromMessages(allMessages) {
   }
 
   // ✅ [FIX] أولاً: ابحث عن الكمية في سياق فعل الشراء فقط
-  const buyContext = /(?:بغيت|اريد|نبغي|خود|اعطيني|طلب)\s+(\S+)/i
+  const buyContext = /(?:بغيت|اريد|نبغي|خود|اعطيني|طلب|bgit|bghit|bghiti|nbghi|nbi|n9der|khdini|3tini)\s+(\S+)/i
   const contextMatch = allMessages.match(buyContext)
   if (contextMatch) {
     const afterBuy = contextMatch[1]
@@ -427,7 +504,7 @@ function extractQuantityFromMessages(allMessages) {
 
   // رقمي صريح: "بغيت 3" أو "3 حبات" — مع التحقق من سياق الشراء
   const numericMatch = allMessages.match(
-    /(?:بغيت|اريد|نبغي|خود|اعطيني|طلب|نحتاج|ناخذ)\s*(?:حبة|حبات|قطعة|قطع|وحدة|وحدات|وحده|مع)?\s*(\d+)|(\d+)\s*(?:حبة|حبات|قطعة|قطع|وحدة|وحدات|pieces?)/i
+    /(?:بغيت|اريد|نبغي|خود|اعطيني|طلب|نحتاج|ناخذ|bgit|bghit|bghiti|nbghi|nbi|khdini|3tini)\s*(?:حبة|حبات|قطعة|قطع|وحدة|وحدات|وحده|pieces?|pcs)?\s*(\d+)|(\d+)\s*(?:حبة|حبات|قطعة|قطع|وحدة|وحدات|pieces?|pcs)/i
   )
   if (numericMatch) {
     const qty = parseInt(numericMatch[1] || numericMatch[2], 10)
@@ -442,7 +519,7 @@ function extractQuantityFromMessages(allMessages) {
   }
 
   // ✅ [FIX] كلمات العدد فقط في جمل الشراء (تجنب "جوج أيام" = 2)
-  const buySegments = allMessages.match(/(?:بغيت|اريد|نبغي|خود|اعطيني|طلب)[^.،\n]{0,30}/gi) || []
+  const buySegments = allMessages.match(/(?:بغيت|اريد|نبغي|خود|اعطيني|طلب|bgit|bghit|bghiti|nbghi|nbi|khdini|3tini)[^.،\n]{0,30}/gi) || []
   for (const seg of buySegments) {
     for (const [word, qty] of Object.entries(numberWords)) {
       if (seg.includes(word)) {
@@ -452,54 +529,295 @@ function extractQuantityFromMessages(allMessages) {
     }
   }
 
+  // ✅ [NEW] Arabizi fallback: "bgit 3" / "bghit 2" even without Arabic keywords
+  const arabiziDirect = allMessages.match(/\b(?:bgit|bghit|bghiti|nbghi|nbi)\s+(\d{1,2})\b/i)
+  if (arabiziDirect) {
+    const qty = parseInt(arabiziDirect[1], 10)
+    if (!isNaN(qty) && qty >= 1 && qty <= 20) {
+      console.log(`🔢 [extractQuantity] Arabizi direct: ${qty}`)
+      return qty
+    }
+  }
+
   return 1
 }
 
 /* ════════════════════════════════════════════════
-   📍 استخراج العنوان من رسائل المحادثة
+   📍 تنظيف العنوان المستخرج
+════════════════════════════════════════════════ */
+function cleanExtractedAddress(raw) {
+  if (!raw) return null
+  let addr = raw.trim()
+
+  // ❌ حذف labels اللي كتجي من ملخصات (Adresse/Address/العنوان)
+  addr = addr
+    .replace(/^\s*(adresse|address)\s*[:：\-،,]?\s*/i, '')
+    .replace(/^\s*(العنوان|عنوان)\s*[:：\-،,]?\s*/i, '')
+    .trim()
+
+  // ❌ تنظيف علامات الترقيم الزائدة فقط (بدون حذف أرقام أو أجزاء من العنوان)
+  addr = addr.replace(/[\s،,.\-:؟?!]+$/, '').trim()
+
+  // ❌ إذا بقات غير label، تجاهل
+  if (!addr || /^adresse$/i.test(addr) || /^address$/i.test(addr) || /^العنوان$/i.test(addr) || /^عنوان$/i.test(addr)) {
+    return null
+  }
+
+  return addr.length > 4 ? addr : null
+}
+
+/* ════════════════════════════════════════════════
+   📍 استخراج العنوان كما كتبه الزبون (نهائي)
+   الهدف: نخزنو نفس النص بدون إضافة/نقصان
+════════════════════════════════════════════════ */
+function extractLiteralAddressFromUserMessages(userMsgs) {
+  const msgs = Array.isArray(userMsgs) ? userMsgs : []
+  if (msgs.length === 0) return null
+
+  const MARKETING_HINT = /نصيحة|باقة|درهم|توفير|هدية|عرض|تخفيض|promo|offer|discount/i
+  const ADDRESS_HINT = /(?:^|\b)(adresse|address|العنوان|عنوان|حي|شارع|زنقة|تجزئة|دوار|سكن|ساكن|التوصيل|نوصل|وصل|rue|av\.?|avenue|bd\.?|boulevard|quartier|résidence|lotissement|immeuble|appt|appartement|hay|hayy|haye|hey|ra9m|rakm|rqm|dar|maison)(?:\b|:)/i
+  const CITY_HINT = /(?:\b(?:fes|fès|casa|casablanca|kaza|marrakech|marrakesh|tanger|tangier|agadir|rabat|sale|salé|meknes|oujda|tetouan|tétouan|taza|beni\s*mellal)\b)|(?:الدار\s*البيضاء|كازا|الرباط|سلا|فاس|مكناس|مراكش|طنجة|أكادير|وجدة|تطوان|تازة|بني\s*ملال|آسفي|الجديدة|القنيطرة)/i
+
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const raw = typeof msgs[i]?.content === "string" ? msgs[i].content : ""
+    if (!raw.trim()) continue
+    if (MARKETING_HINT.test(raw)) continue
+
+    // خذ أول سطر غير فارغ (الزبون كيرسل سطر واحد غالباً)
+    const firstLine = raw.split("\n").map(s => s.trim()).find(Boolean) || ""
+    if (!firstLine) continue
+
+    if (ADDRESS_HINT.test(firstLine) || CITY_HINT.test(firstLine)) {
+      // فقط حذف prefix إذا كان label، بدون لمس باقي النص
+      const cleaned = cleanExtractedAddress(firstLine)
+      return cleaned || firstLine.trim()
+    }
+  }
+
+  return null
+}
+
+/* ════════════════════════════════════════════════
+   📍 استخراج (المدينة + العنوان) بشكل منفصل
+   - المدينة: إذا قدرنا نعرفها من نفس الرسالة
+   - العنوان: نفس نص الزبون (بدون "Adresse:" فقط) ثم نحيد المدينة من البداية إذا كانت مكتوبة
+════════════════════════════════════════════════ */
+function extractCityAndAddressFromUserMessages(userMsgs) {
+  const msgs = Array.isArray(userMsgs) ? userMsgs : []
+  if (msgs.length === 0) return { city: null, address: null }
+
+  const MARKETING_HINT = /نصيحة|باقة|درهم|توفير|هدية|عرض|تخفيض|promo|offer|discount/i
+  const CITY_ONLY_HINT = /^(?:\s*(?:adresse|address|المدينة|مدينة)\s*[:：\-،,]?\s*)?(rabat|sale|salé|fes|fès|casa|casablanca|kaza|marrakech|tanger|agadir|meknes|oujda|tetouan|tétouan|taza|beni\s*mellal|الرباط|سلا|فاس|الدار\s*البيضاء|كازا|مراكش|طنجة|أكادير|مكناس|وجدة|تطوان|تازة|بني\s*ملال)\s*$/i
+  const ADDRESS_ONLY_HINT = /(?:^|\b)(?:حي|شارع|زنقة|تجزئة|دوار|سكن|ساكن|التوصيل|نوصل|وصل|rue|av\.?|avenue|bd\.?|boulevard|quartier|résidence|lotissement|immeuble|appt|appartement|hay|hayy|haye|hey|ra9m|rakm|rqm|dar|maison)\b/i
+
+  // NOTE: \b word-boundary is unreliable for Arabic letters, so we use includes() for Arabic city detection.
+  const ARABIC_CITY_ALIASES = [
+    { city: "فاس", aliases: ["فاس"] },
+    { city: "الرباط", aliases: ["الرباط", "رباط"] },
+    { city: "سلا", aliases: ["سلا"] },
+    { city: "مكناس", aliases: ["مكناس"] },
+    { city: "مراكش", aliases: ["مراكش"] },
+    { city: "طنجة", aliases: ["طنجة"] },
+    { city: "أكادير", aliases: ["أكادير", "اكادير"] },
+    { city: "وجدة", aliases: ["وجدة"] },
+    { city: "تطوان", aliases: ["تطوان"] },
+    { city: "تازة", aliases: ["تازة"] },
+    { city: "بني ملال", aliases: ["بني ملال", "بنيملال"] },
+    { city: "الدار البيضاء", aliases: ["الدار البيضاء", "الدارالبيضاء"] },
+    { city: "كازا", aliases: ["كازا"] },
+    { city: "آسفي", aliases: ["آسفي", "اسفي"] },
+    { city: "الجديدة", aliases: ["الجديدة"] },
+    { city: "القنيطرة", aliases: ["القنيطرة", "قنيطرة"] },
+  ]
+
+  const LATIN_CITY_MAP = [
+    { city: "فاس", re: /\b(fes|fès)\b/i },
+    { city: "الرباط", re: /\b(rabat)\b/i },
+    { city: "الدار البيضاء", re: /\b(casa|casablanca|kaza)\b/i },
+    { city: "مراكش", re: /\b(marrakech|marrakesh)\b/i },
+    { city: "طنجة", re: /\b(tanger|tangier|tanga)\b/i },
+    { city: "أكادير", re: /\b(agadir)\b/i },
+    { city: "مكناس", re: /\b(meknes)\b/i },
+    { city: "وجدة", re: /\b(oujda)\b/i },
+    { city: "تطوان", re: /\b(tetouan|tétouan)\b/i },
+    { city: "تازة", re: /\b(taza)\b/i },
+    { city: "بني ملال", re: /\b(beni\s*mellal)\b/i },
+    { city: "سلا", re: /\b(sale|salé)\b/i },
+  ]
+
+  function normalizeForArabicCity(line) {
+    return String(line || "")
+      .replace(/^\s*(?:المدينة|مدينة)\s*[:：\-،,]?\s*/i, "")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  function detectCity(line) {
+    const l = normalizeForArabicCity(line)
+    const latin = LATIN_CITY_MAP.find(e => e.re.test(l))
+    if (latin) return latin.city
+    // Arabic includes
+    for (const entry of ARABIC_CITY_ALIASES) {
+      for (const a of entry.aliases) {
+        if (l.includes(a)) return entry.city
+      }
+    }
+    return null
+  }
+
+  // 1) Find latest address-like user message (keep it as-is)
+  let addressRaw = null
+  let addressIdx = -1
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const raw = typeof msgs[i]?.content === "string" ? msgs[i].content.trim() : ""
+    if (!raw) continue
+    if (MARKETING_HINT.test(raw)) continue
+    const firstLine = raw.split("\n").map(s => s.trim()).find(Boolean) || ""
+    if (!firstLine) continue
+    if (ADDRESS_ONLY_HINT.test(firstLine) && !CITY_ONLY_HINT.test(firstLine)) {
+      addressRaw = cleanExtractedAddress(firstLine) || firstLine
+      addressIdx = i
+      break
+    }
+  }
+
+  // 2) Find latest city message (prefer one close to address message)
+  let city = null
+  const searchFrom = addressIdx >= 0 ? addressIdx : msgs.length - 1
+  for (let i = searchFrom; i >= 0; i--) {
+    const raw = typeof msgs[i]?.content === "string" ? msgs[i].content.trim() : ""
+    if (!raw) continue
+    if (MARKETING_HINT.test(raw)) continue
+    const firstLine = raw.split("\n").map(s => s.trim()).find(Boolean) || ""
+    if (!firstLine) continue
+    const detected = detectCity(firstLine)
+    if (detected) { city = detected; break }
+  }
+
+  // 3) If we didn't find an address message, fall back to literal (may be city+address in one line)
+  if (!addressRaw) {
+    const literal = extractLiteralAddressFromUserMessages(msgs)
+    if (!literal) return { city, address: null }
+    addressRaw = literal.trim()
+  }
+
+  // 4) If address line contains a city token at the beginning, strip it (keep address only)
+  const cityInAddress = detectCity(addressRaw)
+  let addressOnly = addressRaw
+  if (cityInAddress) {
+    city = city || cityInAddress
+    // remove city token (arabic/latin) from start only
+    addressOnly = addressOnly
+      .replace(/^\s*(?:المدينة|مدينة)\s*[:：\-،,]?\s*/i, "")
+      .replace(new RegExp(`^\\s*(?:${cityInAddress})\\s*`, "i"), "")
+      .replace(/^[\s,،;\-:]+/, "")
+      .trim()
+  }
+
+  return { city, address: addressOnly || addressRaw }
+}
+
+/* ════════════════════════════════════════════════
+   📍 استخراج العنوان — نسخة محسّنة
    ════════════════════════════════════════════════ */
 function extractAddressFromMessages(allMessages) {
-  const text = allMessages.toLowerCase()
-  
-  // أنماط العنوان الشائعة في الدارجة والعربية
-  const addressPatterns = [
-    // "عنواني هو" / "العنوان هو" / "سكن في" / "عندي في"
-    /(?:عنواني|العنوان|سكن|عندي|ساكن)\s*(?:هو|فى|في)?\s*[:\-]?\s*([^\n,.]+)/i,
-    // "سكن في [عنوان]" 
-    /(?:سكن|ساكن)\s+(?:فى|في)\s+([^\n,.]+)/i,
-    // "[مدينة] [حي]" - مدن مغربية شائعة
-    /(?:الدار البيضاء|كازا|الرباط|سلا|فاس|مكناس|مراكش|طنجة|أكادير|وجدة|تطوان|الخميسات|بني ملال|آسفي|الجديدة|القنيطرة|تازة|ورزازات|الحسيمة|الناظور|العيون|طانطان|السمارة|تزنيت|إنزكان|آيت ملول|تمارة|خريبكة|بوجدور|طرفاية)(?:\s+[^\n,.]+)?/i,
-    // أحياء شائعة في المدن المغربية
-    /(?:حي|شارع|زنقة|سيدي|تجزئة|دوار|الحي)\s+([^\n,.]+)/i,
-    // "رقم " / "زنقة " / "شارع "
-    /(?:رقم|زنقة|شارع|طريق|شارع|دوار)\s+(\d+[^\n,.]*)/i,
+  // ✅ تصفية رسائل البوت أولاً (تحتوي على إيموجيات التأكيد أو كلمات النظام)
+  const clientOnly = allMessages
+    .split('\n')
+    .filter(line => {
+      const isBotLine =
+        /[📦📍💰🚀✅🎉]/.test(line) ||
+        /(?:قيدت|صافي أخويا|هادي هي المعلومات|تم تأكيد|غادي يتصل|المجموع|الطلبية|طلبك داز|ناضي!|تأكد الموعد|كمل الموعد)/i.test(line) ||
+        /^\s*(adresse|address)\s*:?$/i.test(line)
+      return !isBotLine
+    })
+    .join('\n')
+
+  const text = clientOnly.toLowerCase()
+
+  const patterns = [
+    // ══════════════ Arabizi — النمط الكامل ══════════════
+
+    // "hay ryad ra9m dar 22" — النمط الكامل مع رقم
+    /\b(?:hay|hayy|haye|hey)\s+([a-z][a-z0-9\s]*?(?:ra9m|rakm|rqm|n°?|num|numero)\s*(?:dar|d|bt|beit|bayt|maison)?\s*\d+[a-z]?)/i,
+
+    // "hay [اسم الحي]" — بدون رقم
+    /\b(?:hay|hayy|haye|hey)\s+([a-z][a-z\s]{2,30}?)(?=\s+(?:ra9m|rakm|rqm|bgit|bghit|\d)|$)/i,
+
+    // "hay [اسم]" بدون قيود
+    /\b(?:hay|hayy|haye|hey)\s+([a-z][a-z\s]{2,25})/i,
+
+    // "ra9m dar 22" / "rakm dar 15"
+    /\b(?:ra9m|rakm|rqm|num|n°?|numero)\s*(?:dar|d|bt|beit|bayt|maison|appart)?\s*(\d+[a-z]?)/i,
+
+    // مدينة + عنوان arabizi: "fes hay ryad ra9m dar 22"
+    /\b(?:fes|fès|casa|casablanca|kaza|marrakech|marrakesh|tanger|tanga|agadir|rabat|sale|salé|meknes|oujda|tetouan|taza|beni\s*mellal)\b[,\s]+(?:hay\s+)?([a-z][^\n,]{4,80})/i,
+
+    // "dar/bayt [رقم]"
+    /\b(?:dar|dari|bayt|beit)\s+(?:ra9m|rakm|rqm|n°?)?\s*(\d+[a-z]*)/i,
+
+    // "3ndi/andi [عنوان]"
+    /\b(?:3nd|3ndi|andi|3andi|andni|3andni)\s+([a-z][^\n,]{4,60})/i,
+
+    // ══════════════ فرنسي ══════════════
+
+    // "rue/avenue/boulevard/résidence [اسم]"
+    /\b(?:rue|avenue|av\.?|boulevard|bd\.?|résidence|rés\.?|lotissement|lot\.?|quartier|immeuble|appt?\.?)\s+([^\n,،]{4,80})/i,
+
+    // "[رقم], rue [اسم]"
+    /(\d+[,\s]+(?:rue|avenue|boulevard|bd|résidence|quartier|lotissement)\s+[^\n,،]{4,60})/i,
+
+    // ══════════════ عربي / درجة ══════════════
+
+    // ✅ [FIX] مدينة + حي/شارع كامل: "فاس حي رياض رقم دار 33" (نحتفظ بالمدينة)
+    /((?:\b(?:فاس|الرباط|سلا|مكناس|مراكش|طنجة|أكادير|وجدة|تطوان|تازة|بني\s*ملال|الدار\s*البيضاء|كازا|آسفي|الجديدة|القنيطرة)\b)\s+(?:حي|شارع|زنقة|تجزئة|دوار)?\s*[^\n,.،]{5,100})/i,
+
+    // "حي/شارع/زنقة/تجزئة [اسم]"
+    /(?:حي|شارع|زنقة|تجزئة|دوار|سيدي|حومة)\s+([^\n,.،]{4,80})/i,
+
+    // "عنواني/العنوان/سكن/ساكن [...]"
+    /(?:عنواني|العنوان|سكن|ساكن)\s*(?:هو|فى|في|ف)?\s*[:\-]?\s*([^\n,.،]{4,80})/i,
+
+    // "التوصيل/نوصل لـ [...]"
+    /(?:التوصيل|توصيل|نوصل|وصل)\s*(?:ل|لـ|لي|لها|ليه)?\s*[:\-]?\s*([^\n,.،]{4,80})/i,
+
+    // مدن مغربية بالعربية (مع العنوان كامل بعدها)
+    /((?:الدار البيضاء|كازا|الرباط|سلا|فاس|مكناس|مراكش|طنجة|أكادير|وجدة|تطوان|تازة|بني ملال|آسفي|الجديدة|القنيطرة|ورزازات|الحسيمة|الناظور|العيون|تزنيت|إنزكان|تمارة)(?:[،,\s]+[^\n,.،]{5,80})?)/i,
   ]
-  
-  for (const pattern of addressPatterns) {
-    const match = allMessages.match(pattern)
-    if (match && match[1]) {
-      const address = match[1].trim()
-      if (address.length > 5) {
-        console.log(`📍 [extractAddress] Found: "${address}"`)
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (match) {
+      const raw = (match[1] || match[0] || '').trim()
+      const address = cleanExtractedAddress(raw)
+      if (address) {
+        console.log(`📍 [extractAddress] ✅ Pattern matched: "${address.slice(0, 50)}"`)
         return address
       }
     }
   }
   
-  // البحث عن عنوان بعد كلمات محددة
-  const addressKeywords = ['عنوان', 'سكن', 'فناش', 'فناس', 'ساكن', 'التوصيل', 'نوصلك']
-  for (const keyword of addressKeywords) {
-    const idx = text.indexOf(keyword)
+  // ══════════════ Fallback بالكلمات المفتاحية ══════════════
+  const keywords = [
+    'عنوان', 'سكن', 'ساكن', 'التوصيل', 'نوصلك', 'فين',
+    'hay', 'ra9m', 'rakm', 'rue', 'quartier', 'résidence',
+    'fes', 'casa', 'marrakech', 'tanger', 'agadir', 'rabat', 'meknes'
+  ]
+
+  for (const kw of keywords) {
+    const idx = text.indexOf(kw)
     if (idx !== -1) {
-      // أخذ النص بعد الكلمة بحد أقصى 100 حرف
-      const after = allMessages.slice(idx + keyword.length, idx + keyword.length + 100)
-      const clean = after.replace(/^[\s:،,-]+/, '').split(/[\n,.]/)[0].trim()
-      if (clean.length > 5) {
-        console.log(`📍 [extractAddress] Found after "${keyword}": "${clean}"`)
-        return clean
+      const after = text.slice(idx + kw.length, idx + kw.length + 120)
+      const raw = after.replace(/^[\s:،,\-?؟]+/, '').split(/[\n,.،]/)[0]
+      const address = cleanExtractedAddress(raw)
+      if (address) {
+        console.log(`📍 [extractAddress] 🔑 Keyword "${kw}": "${address.slice(0, 50)}"`)
+        return address
       }
     }
   }
+
+  console.warn('📍 [extractAddress] ❌ No address found in client messages')
   return null
 }
 
@@ -546,19 +864,29 @@ function buildSystemPrompt(agent, items, objectionReplies, selectedItem, isServi
   const confirmTag = isService ? "[BOOKING_CONFIRMED]" : "[ORDER_CONFIRMED]"
   const lang = agent.language === "darija" ? "darija" : agent.language === "french" ? "french" : "arabic"
 
-  // ✅ [FIX] تكامل التعليمات المخصصة — إذا كان المستخدم كتب تعليمات خاصة، نستعملها كأولوية
-  const customInstructions = agent.instructions?.trim()
+  // ✅ [FIX] Custom instructions per mode (product vs service)
+  const customInstructions = (isService
+    ? (agent.serviceInstructions ?? agent.instructions)
+    : (agent.productInstructions ?? agent.instructions)
+  )?.trim()
+  
+  const stockRule = !isService && selectedItem?.stock !== undefined
+    ? (selectedItem.stock === 0
+        ? `\n⚠️ هذا المنتج نفد من المخزون (stock = 0). قول: "واه معلبالي هاد المنتج sold out دابا 😅" — ما تبيعش حاجة ما عندكش!`
+        : `\n✅ هذا المنتج متوفر في المخزون (${selectedItem.stock} قطعة). ممنوع تقول sold out أو نفد. بيع عادي!`)
+    : ""
+
+  const imagesRule = hasImages
+    ? `\n📸 المنتج عنده صور متوفرة. إذا طلب الصور: ضيف [SEND_IMAGES] في آخر الرسالة مباشرة، بدون أعذار وبدون "ما عنديش تصاور".`
+    : ""
   
   const personalities = {
     darija: {
       intro: customInstructions ? `أنت ${agent.name} — خبير مبيعات ذكي على واتساب.
-${customInstructions}
-
-⚠️ إذا نفد المنتج (stock = 0): قول "واه معلبالي هاد المنتج sold out دابا 😅" — ما تبيعش حاجة ما عندكش!` : `أنت ${agent.name} — حرايفي وبائع مغربي ناضي في واتساب.
+${customInstructions}${stockRule}${imagesRule}` : `أنت ${agent.name} — حرايفي وبائع مغربي ناضي في واتساب.
 شخصيتك: ولد الشعب، مطور، كايعرف يبيع ويشري، وقريب من الكليان.
 تهضر دارجة حرة ديال ولاد البلاد (بلا بروتوكول، بلا رسميات خاوية).
-هدفك: تجمع المعلومات (السلعة + شحال + العنوان) وتدوز الـ Confirmation في أسرع وقت.
-⚠️ إذا نفد المنتج (stock = 0): قول "واه معلبالي هاد المنتج sold out دابا 😅" — ما تبيعش حاجة ما عندكش!`,
+هدفك: تجمع المعلومات (السلعة + شحال + العنوان) وتدوز الـ Confirmation في أسرع وقت.${stockRule}${imagesRule}`,
       whoAreYou: `أنا ${agent.name} 😊، هاني معاك، شنو حب الخاطر؟`,
       robotReply: `والو خويا، أنا غير ${agent.name} اللي معاك 😄`,
       summaryProduct: `صافي ناضي 👌 ها الخلاصة:
@@ -700,7 +1028,6 @@ export async function generateAIReply({
       // ✅ [DEBUG] Log when custom instructions are being used
       if (agent.instructions?.trim()) {
         console.log(`🎯 [generateAIReply] Using custom instructions for agent: ${agent.name}`)
-        console.log(`📝 [generateAIReply] Instructions preview: "${agent.instructions.substring(0, 100)}..."`)
       }
 
       const messages = [
@@ -735,25 +1062,32 @@ export async function generateAIReply({
         }
       )
 
+      // ✅ Validate HTTP response before parsing
+      if (!response.ok) {
+        // ✅ PII Safe: don't log error response body (may contain sensitive info)
+        console.error(`❌ OpenRouter HTTP ${response.status}: API error (body hidden for PII safety)`)
+        throw new Error(`OpenRouter HTTP ${response.status}`)
+      }
+
       const data = await response.json()
 
-      let reply = data.choices?.[0]?.message?.content
-      
-      console.log(`🤖 [generateAIReply] RAW AI RESPONSE: "${reply?.substring(0, 100)}..."`)
-
-      if (!reply) {
-        if (attempts < maxAttempts) {
-          console.warn(`⚠️ محاولة ${attempts} فشلت — لا رد من AI. إعادة المحاولة...`)
-          continue
-        }
-        return {
-          reply: "عذراً، حدث خطأ. حاول مرة أخرى 😊",
-          stage: null,
-          orderConfirmed: false,
-          cancelOrder: false,
-          cancelAppointment: false,
-        }
+      // ✅ Validate response structure
+      if (!data || typeof data !== 'object') {
+        console.error('❌ Invalid JSON response from OpenRouter')
+        throw new Error('Invalid JSON response')
       }
+      if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+        console.error('❌ Empty or missing choices array:', Object.keys(data))
+        throw new Error('Empty choices array')
+      }
+      if (!data.choices[0]?.message?.content) {
+        console.error('❌ Missing message content in response')
+        throw new Error('Missing message content')
+      }
+
+      let reply = data.choices[0].message.content
+
+      console.log(`🤖 [generateAIReply] RAW AI RESPONSE`)
 
       // استخراج المرحلة
       const stageMatch = reply.match(/\[STAGE:(\w+)\]/)
@@ -858,7 +1192,8 @@ export async function generateAIReply({
         cancelAppointment,
       }
     } catch (error) {
-      console.error(`❌ generateAIReply error (محاولة ${attempts}/${maxAttempts}):`, error.message)
+      // ✅ PII Safe: don't log error.message (may contain sensitive API response data)
+      console.error(`❌ generateAIReply error (محاولة ${attempts}/${maxAttempts}): [hidden for PII safety]`)
       if (attempts >= maxAttempts) {
         return {
           reply: "عذراً، حدث خطأ تقني. حاول مرة أخرى 😊",
@@ -875,15 +1210,104 @@ export async function generateAIReply({
   }
 }
 
+function detectReorderIntent(text) {
+  const t = String(text || "").toLowerCase()
+  if (!t.trim()) return false
+  // Darija/Arabic/French/English common patterns
+  return (
+    /(\b(again|re-?order|another)\b)/i.test(t) ||
+    /(مرة\s*أخرى|مره\s*اخرى|بغيت\s*نطلب\s*مرة\s*أخرى|بغيت\s*نطلب\s*مره\s*اخرى|عاود|عاودت|زيد|زيدي|نفس|نفسو|نفسها|نفس\s*منتج|نفس\s*المنتج)/i.test(t) ||
+    /(encore|recommander|même\s+produit|la\s+même)/i.test(t)
+  )
+}
+
+function detectSameProductIntent(text) {
+  const t = String(text || "").toLowerCase()
+  return /(نفس|نفسو|نفسها|نفس\s*منتج|نفس\s*المنتج|same|même\s+produit)/i.test(t)
+}
+
+function detectRebookIntent(text) {
+  const t = String(text || "").toLowerCase()
+  if (!t.trim()) return false
+  return /(بغيت\s*(نحجز|نحدد|ندير)\s*(مرة\s*أخرى|مره\s*اخرى)|مرة\s*أخرى|مره\s*اخرى|عاود|زيد|حجز\s*جديد|موعد\s*جديد|rebook|book\s*again|réserver\s*encore|rdv\s*encore|rendez-?vous\s*encore|reservation\s*encore|réservation\s*encore)/i.test(
+    t
+  )
+}
+
+function detectSameServiceIntent(text) {
+  const t = String(text || "").toLowerCase()
+  if (!t.trim()) return false
+  return /(نفس\s*(الخدمة|سيرفيس)|نفسها|نفسو|same\s*service|même\s*service|la\s*même\s*prestation)/i.test(
+    t
+  )
+}
+
+function detectTrackingIntent(text) {
+  const t = String(text || "").toLowerCase()
+  if (!t.trim()) return false
+  return /(فين\s*وصل|فين\s*واصلة|فين\s*جات|واش\s*وصلات|واش\s*وصل|تتبع|تراكن|tracking|suivi|où\s*est|elle\s*est\s*où)/i.test(t)
+}
+
+function detectAppointmentStatusIntent(text) {
+  const t = String(text || "").toLowerCase()
+  if (!t.trim()) return false
+  return /(فين\s*وصل\s*الموعد|فين\s*وصل\s*الحجز|واش\s*تأكد\s*الموعد|واش\s*تأكد\s*الحجز|اش\s*من\s*حالة\s*الموعد|اش\s*من\s*حالة\s*الحجز|rendez-?vous|rdv|réservation|reservation|confirmé|confirmée|confirm|status)/i.test(
+    t
+  )
+}
+
+function formatAppointmentStatusLabel(status, lang = "darija") {
+  const ar = {
+    PENDING: "في الانتظار ⏳",
+    CONFIRMED: "مؤكد ✅",
+    CANCELLED: "ملغي ❌",
+    COMPLETED: "مكتمل ✅",
+  }
+  const fr = {
+    PENDING: "En attente ⏳",
+    CONFIRMED: "Confirmé ✅",
+    CANCELLED: "Annulé ❌",
+    COMPLETED: "Terminé ✅",
+  }
+  const map = lang === "french" ? fr : ar
+  return map[status] || status
+}
+
+function formatOrderStatusLabel(status, lang = "darija") {
+  const ar = {
+    PENDING: "في الانتظار ⏳",
+    CONFIRMED: "مؤكدة ✅",
+    SHIPPED: "فـ الطريق 🚚",
+    DELIVERED: "تسلّمات 📦",
+    CANCELLED: "ملغية ❌",
+  }
+  const fr = {
+    PENDING: "En attente ⏳",
+    CONFIRMED: "Confirmée ✅",
+    SHIPPED: "Expédiée 🚚",
+    DELIVERED: "Livrée 📦",
+    CANCELLED: "Annulée ❌",
+  }
+  const map = lang === "french" ? fr : ar
+  return map[status] || status
+}
+
+function safeObj(x) {
+  if (!x || typeof x !== "object") return {}
+  if (Array.isArray(x)) return {}
+  return x
+}
+
 // معالجة رسالة واردة كاملة
 export async function processIncomingMessage({
   userId,
   customerPhone,
   customerName,
   messageText,
+  whatsappMediaId = null,
 }) {
   try {
-    console.log(`🔍 [processIncomingMessage] userId=${userId}, customerPhone=${customerPhone}, customerName=${customerName}`)
+    console.log(`🔍 [processIncomingMessage] userId=${userId}, hasPhone=${!!customerPhone}, hasName=${!!customerName}`)
     
     // 1. جلب Agent مع المنتجات والردود
     const agent = await prisma.agent.findUnique({
@@ -904,10 +1328,10 @@ export async function processIncomingMessage({
     // تطبيع رقم الهاتف
     const normalizedPhone = normalizePhone(customerPhone)
     if (!normalizedPhone) {
-      console.error(`❌ [processIncomingMessage] Invalid phone number: ${customerPhone}`)
+      console.error(`❌ [processIncomingMessage] Invalid phone number provided`)
       return { reply: null, skipped: true, imageUrls: [] }
     }
-    console.log(`📞 [processIncomingMessage] Phone normalized: ${customerPhone} → ${normalizedPhone}`)
+    console.log(`📞 [processIncomingMessage] Phone normalized`)
 
     // 2. إيجاد أو إنشاء الزبون
     let customer = await prisma.customer.findFirst({
@@ -1004,12 +1428,19 @@ export async function processIncomingMessage({
           data: {
             stage: "DISCOVERY",
             updatedAt: new Date()
-          },
-          include: {
-            messages: { orderBy: { createdAt: "asc" }, take: 50 }
           }
+          // ✅ [FIX] لا نحمل messages هنا، نحملهم منفصلاً باش نضمن freshness
         })
-        console.log(`🔄 [${normalizedPhone}] Reopened recent CLOSED conversation: ${conversation.id}`)
+
+        // ✅ [FIX] إعادة تحميل الرسائل بشكل منفصل من DB للتأكد من freshness
+        const freshMessages = await prisma.message.findMany({
+          where: { conversationId: conversation.id },
+          orderBy: { createdAt: "asc" },
+          take: 50
+        })
+        conversation.messages = freshMessages
+
+        console.log(`🔄 [processIncomingMessage] Reopened recent CLOSED conversation: ${conversation.id} | Loaded ${freshMessages.length} fresh messages`)
       } else {
         // أرشفة المحادثات القديمة وإنشاء محادثة جديدة
         const archivedCount = await prisma.conversation.updateMany({
@@ -1027,6 +1458,7 @@ export async function processIncomingMessage({
             stage: "GREETING",
             score: 10,
             type: isServiceMode ? "service" : "product",
+            context: {},
           },
           include: { messages: true }
         })
@@ -1034,14 +1466,214 @@ export async function processIncomingMessage({
       }
     }
 
+    // Ensure context is always an object
+    conversation.context = safeObj(conversation.context)
+
     // 4. حفظ رسالة الزبون
     await prisma.message.create({
       data: {
         conversationId: conversation.id,
         role: "USER",
         content: messageText,
+        ...(whatsappMediaId ? { whatsappMediaId } : {}),
       }
     })
+
+    // ✅ إضافة الرسالة الجديدة للـ context لضمان دخولها في الاستخراج
+    conversation.messages = [...(conversation.messages || []), { role: "USER", content: messageText }]
+
+    // ✅ Re-book flow (Services): reuse last confirmed appointment details
+    if (isServiceMode && detectRebookIntent(messageText)) {
+      try {
+        const ctx = safeObj(conversation.context)
+        const lastCtx = safeObj(ctx.lastConfirmedService)
+
+        const lastAppointment = await prisma.appointment.findFirst({
+          where: {
+            userId,
+            customerId: customer.id,
+            status: { in: ["CONFIRMED", "PENDING", "COMPLETED"] },
+          },
+          orderBy: { date: "desc" },
+          select: { id: true, serviceId: true, serviceName: true, date: true, status: true },
+        })
+
+        const base = lastAppointment || (lastCtx.serviceName ? { serviceName: lastCtx.serviceName, date: lastCtx.date } : null)
+        const wantsSame = detectSameServiceIntent(messageText) || /نفس/i.test(String(messageText || ""))
+
+        if (base?.serviceName && wantsSame) {
+          const lang = agent.language === "french" ? "french" : agent.language === "arabic" ? "arabic" : "darija"
+          const dateStr = base.date
+            ? new Date(base.date).toLocaleDateString(lang === "french" ? "fr-MA" : "ar-MA", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+              })
+            : null
+          const timeStr = base.date
+            ? new Date(base.date).toLocaleTimeString(lang === "french" ? "fr-MA" : "ar-MA", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : null
+
+          const ask =
+            lang === "french"
+              ? `Parfait 👌 Tu veux la même prestation "${base.serviceName}".\n\nTu veux garder le même créneau (${dateStr || "—"} à ${timeStr || "—"}) ou tu changes la date/heure ?`
+              : `مزيان 👌 بغيتي نفس الخدمة "${base.serviceName}".\n\nواش نخلي نفس النهار والساعة (${dateStr || "—"} فـ ${timeStr || "—"}) ولا تبدّل التاريخ/الوقت؟`
+
+          await prisma.message.create({
+            data: { conversationId: conversation.id, role: "AGENT", content: ask },
+          })
+          await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: {
+              stage: "DISCOVERY",
+              updatedAt: new Date(),
+              isRead: false,
+              score: Math.max(conversation.score || 0, 55),
+              context: {
+                ...ctx,
+                rebook: {
+                  startedAt: new Date().toISOString(),
+                  base: {
+                    serviceId: base.serviceId || lastCtx.serviceId || null,
+                    serviceName: base.serviceName || null,
+                    date: base.date || lastCtx.date || null,
+                  },
+                },
+              },
+            },
+          })
+
+          return { reply: ask, stage: "DISCOVERY", score: Math.max(conversation.score || 0, 55), orderConfirmed: false, imageUrls: [] }
+        }
+      } catch (e) {
+        console.error("❌ [processIncomingMessage] rebook flow error:", e?.message || e)
+      }
+      // fall back to normal AI flow
+    }
+
+    // ✅ Deterministic intent (Services): appointment status / confirmation
+    if (isServiceMode && detectAppointmentStatusIntent(messageText)) {
+      try {
+        const latest = await prisma.appointment.findFirst({
+          where: { userId, customerId: customer.id },
+          orderBy: { date: "desc" },
+          select: {
+            serviceName: true,
+            status: true,
+            date: true,
+          },
+        })
+
+        if (latest) {
+          const lang = agent.language === "french" ? "french" : agent.language === "arabic" ? "arabic" : "darija"
+          const statusLabel = formatAppointmentStatusLabel(latest.status, lang)
+          const date = new Date(latest.date).toLocaleDateString(lang === "french" ? "fr-MA" : "ar-MA", {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })
+          const time = new Date(latest.date).toLocaleTimeString(lang === "french" ? "fr-MA" : "ar-MA", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+
+          const replyText =
+            lang === "french"
+              ? `Bien sûr 😊\n🔧 Service: ${latest.serviceName}\n📌 Statut: ${statusLabel}\n📅 ${date} — ${time}`
+              : `أكيد 😊\n🔧 الخدمة: ${latest.serviceName}\n📌 الحالة: ${statusLabel}\n📅 ${date} — ${time}`
+
+          await prisma.message.create({
+            data: { conversationId: conversation.id, role: "AGENT", content: replyText },
+          })
+          await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: {
+              updatedAt: new Date(),
+              isRead: false,
+              context: {
+                ...safeObj(conversation.context),
+                lastAppointmentStatusAskedAt: new Date().toISOString(),
+                lastAppointmentSnapshot: {
+                  serviceName: latest.serviceName,
+                  status: latest.status,
+                  date: latest.date,
+                },
+              },
+            },
+          })
+
+          return { reply: replyText, stage: conversation.stage, score: conversation.score, orderConfirmed: false, imageUrls: [] }
+        }
+      } catch (e) {
+        console.error("❌ [processIncomingMessage] appointment status intent error:", e?.message || e)
+      }
+      // fall back to normal AI flow
+    }
+
+    // ✅ Deterministic intent: "Where is my order?" / tracking
+    if (!isServiceMode && detectTrackingIntent(messageText)) {
+      try {
+        const latest = await prisma.order.findFirst({
+          where: { userId, customerId: customer.id },
+          orderBy: { createdAt: "desc" },
+          select: {
+            productName: true,
+            status: true,
+            trackingNumber: true,
+            createdAt: true,
+            city: true,
+          },
+        })
+        if (latest) {
+          const lang = agent.language === "french" ? "french" : agent.language === "arabic" ? "arabic" : "darija"
+          const statusLabel = formatOrderStatusLabel(latest.status, lang)
+          const date = new Date(latest.createdAt).toLocaleDateString(lang === "french" ? "fr-MA" : "ar-MA")
+          const trackingLink =
+            latest.trackingNumber && agent.trackingUrlTemplate
+              ? String(agent.trackingUrlTemplate).replace(/\{tracking\}/g, latest.trackingNumber)
+              : null
+
+          const replyText =
+            lang === "french"
+              ? `Bien sûr 😊\n📦 Commande: ${latest.productName}\n📌 Statut: ${statusLabel}\n📅 Date: ${date}${
+                  latest.trackingNumber ? `\n🔎 Tracking: ${latest.trackingNumber}` : ""
+                }${trackingLink ? `\n🔗 Lien: ${trackingLink}` : ""}`
+              : `أكيد 😊\n📦 الطلبية: ${latest.productName}\n📌 الحالة: ${statusLabel}\n📅 التاريخ: ${date}${
+                  latest.trackingNumber ? `\n🔎 رقم التتبع: ${latest.trackingNumber}` : ""
+                }${trackingLink ? `\n🔗 رابط التتبع: ${trackingLink}` : ""}`
+
+          await prisma.message.create({
+            data: { conversationId: conversation.id, role: "AGENT", content: replyText },
+          })
+          await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: {
+              updatedAt: new Date(),
+              isRead: false,
+              context: {
+                ...safeObj(conversation.context),
+                lastOrderStatusAskedAt: new Date().toISOString(),
+                lastOrderSnapshot: {
+                  productName: latest.productName,
+                  status: latest.status,
+                  trackingNumber: latest.trackingNumber || null,
+                  createdAt: latest.createdAt,
+                },
+              },
+            },
+          })
+
+          return { reply: replyText, stage: conversation.stage, score: conversation.score, orderConfirmed: false, imageUrls: [] }
+        }
+      } catch (e) {
+        console.error("❌ [processIncomingMessage] tracking intent error:", e?.message || e)
+      }
+      // If no order found, fall back to normal AI flow
+    }
 
     // 4.5 جلب تاريخ الزبون
     let customerHistory = null
@@ -1107,7 +1739,7 @@ export async function processIncomingMessage({
         })
 
         appointmentsHistory = appointmentsLines.join("\n")
-        console.log(`📅 [${normalizedPhone}] Found ${customerAppointments.length} appointments`)
+        console.log(`📅 Found ${customerAppointments.length} appointments`)
       }
     } catch (err) {
       console.error("❌ Error fetching appointments:", err)
@@ -1144,7 +1776,7 @@ export async function processIncomingMessage({
           const tracking = o.trackingNumber ? ` — رقم التتبع: ${o.trackingNumber}` : ""
           return `- طلب ${i + 1}: ${o.productName} × ${o.quantity} — ${o.totalAmount} درهم — ${status} (${date})${tracking}`
         }).join("\n")
-        console.log(`📦 [${normalizedPhone}] Found ${customerOrders.length} orders`)
+        console.log(`📦 Found ${customerOrders.length} orders`)
       }
     } catch (err) {
       console.error("❌ Error fetching orders history:", err)
@@ -1168,8 +1800,137 @@ export async function processIncomingMessage({
       if (!selectedItem) selectedItem = items.find(p => p.isActive) || null
     }
 
-    // 6. توليد رد AI
-    const { reply, stage, score, orderConfirmed, sendImages, cancelOrder, cancelAppointment } =
+    // ✅ [NEW] Custom greeting message for first interaction
+    // Check if this is the first message (no previous AGENT messages in conversation)
+    const isFirstMessage = !conversation.messages?.some(m => m.role === "AGENT")
+    const customGreeting = agent.welcomeMessage?.trim()
+
+    if (isFirstMessage && customGreeting) {
+      // Use custom greeting template with placeholder replacement
+      let greetingReply = customGreeting.replace(/\{name\}/g, customer.name || "عزيزي")
+      
+      console.log(`👋 Custom greeting used for first message`)
+
+      // Save the greeting as AGENT message
+      await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          role: "AGENT",
+          content: greetingReply,
+        }
+      })
+
+      // Update conversation stage
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          stage: "GREETING",
+          updatedAt: new Date(),
+        }
+      })
+
+      return {
+        reply: greetingReply,
+        stage: "GREETING",
+        score: 10,
+        orderConfirmed: false,
+        imageUrls: [],
+      }
+    }
+
+    // ✅ Re-order flow (Products): if customer wants to order again, reuse last confirmed details
+    // This avoids re-asking name/city/address every time.
+    if (!isServiceMode && detectReorderIntent(messageText)) {
+      try {
+        const lastOrder = await prisma.order.findFirst({
+          where: {
+            userId,
+            customerId: customer.id,
+            status: { in: ["CONFIRMED", "SHIPPED", "DELIVERED", "PENDING"] },
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            productId: true,
+            productName: true,
+            customerName: true,
+            city: true,
+            address: true,
+            quantity: true,
+          },
+        })
+
+        const wantsSame = detectSameProductIntent(messageText)
+        const hasLast = Boolean(lastOrder?.productName)
+
+        if (hasLast && wantsSame) {
+          const lastCity = String(lastOrder.city || "").trim()
+          const lastAddress = String(lastOrder.address || "").trim()
+          const prodName = lastOrder.productName
+
+          let askParts = []
+          // Ask only what could change
+          if (lastCity && lastAddress) {
+            askParts.push(`واش نخلي نفس المدينة (${lastCity}) و العنوان (${lastAddress}) ولا تبدّل شي حاجة؟`)
+          } else if (lastCity && !lastAddress) {
+            askParts.push(`المدينة باقية (${lastCity}) ولا تبدّل؟ وشنو العنوان بالتفاصيل؟`)
+          } else if (!lastCity && lastAddress) {
+            askParts.push(`واش نخلي نفس العنوان (${lastAddress}) ولا تبدّل؟ وشنو المدينة؟`)
+          } else {
+            askParts.push(`شنو المدينة والعنوان بالتفاصيل؟`)
+          }
+          askParts.push(`وشحال بغيتي دابا من "${prodName}"؟ 1 ولا 2 ولا 3؟`)
+
+          const replyText = `مزيان 👌 بغيتي نفس المنتج "${prodName}".\n\n${askParts.join("\n")}`
+
+          // Save assistant message + update conversation stage so the UI/state stays consistent
+          await prisma.message.create({
+            data: {
+              conversationId: conversation.id,
+              role: "AGENT",
+              content: replyText,
+            },
+          })
+
+          await prisma.conversation.update({
+            where: { id: conversation.id },
+            data: {
+              stage: "DISCOVERY",
+              updatedAt: new Date(),
+              isRead: false,
+              score: Math.max(conversation.score || 0, 55),
+              context: {
+                ...safeObj(conversation.context),
+                reorder: {
+                  startedAt: new Date().toISOString(),
+                  base: {
+                    productId: lastOrder.productId || null,
+                    productName: lastOrder.productName || null,
+                    customerName: lastOrder.customerName || null,
+                    city: lastCity || null,
+                    address: lastAddress || null,
+                  },
+                },
+              },
+            },
+          })
+
+          return {
+            reply: replyText,
+            stage: "DISCOVERY",
+            score: Math.max(conversation.score || 0, 55),
+            orderConfirmed: false,
+            imageUrls: [],
+          }
+        }
+      } catch (e) {
+        console.error("❌ [processIncomingMessage] Reorder flow error:", e?.message || e)
+        // If anything fails, fall back to normal AI flow
+      }
+    }
+
+    // 6. توليد رد AI (for non-greeting messages or when no custom greeting)
+    // لازم تكون let باش نقدر نعدّلها فـ final guard (city/address/qty)
+    let { reply, stage, score, orderConfirmed, sendImages, cancelOrder, cancelAppointment } =
       await generateAIReply({
         agent,
         items,
@@ -1186,7 +1947,7 @@ export async function processIncomingMessage({
         customerTag: customer.tag,
       })
 
-    console.log(`🤖 [${normalizedPhone}] AI result: orderConfirmed=${orderConfirmed}, stage=${stage}, cancelOrder=${cancelOrder}, cancelAppointment=${cancelAppointment}`)
+    console.log(`🤖 AI result: confirmed=${orderConfirmed}, stage=${stage}, cancelOrder=${cancelOrder}`)
 
     // 6.5 معالجة طلب الإلغاء من الزبون
     if (cancelOrder) {
@@ -1205,9 +1966,9 @@ export async function processIncomingMessage({
               message: `fr:${customer.name} a annulé sa commande||ar:${customer.name} ألغى طلبيته`,
             }
           })
-          console.log(`✅ [${normalizedPhone}] Order ${recentOrder.id} cancelled by customer request`)
+          console.log(`✅ Order ${recentOrder.id.slice(0, 6)}... cancelled by customer request`)
         }
-      } catch (err) { console.error(`❌ [${normalizedPhone}] Error cancelling order:`, err.message) }
+      } catch (err) { console.error(`❌ [processIncomingMessage] Error cancelling order:`, err.message) }
     }
 
     if (cancelAppointment) {
@@ -1226,19 +1987,133 @@ export async function processIncomingMessage({
               message: `fr:${customer.name} a annulé son rendez-vous||ar:${customer.name} ألغى موعده`,
             }
           })
-          console.log(`✅ [${normalizedPhone}] Appointment ${recentAppointment.id} cancelled by customer request`)
+          console.log(`✅ Appointment ${recentAppointment.id.slice(0, 6)}... cancelled by customer request`)
         }
-      } catch (err) { console.error(`❌ [${normalizedPhone}] Error cancelling appointment:`, err.message) }
+      } catch (err) { console.error(`❌ [processIncomingMessage] Error cancelling appointment:`, err.message) }
     }
 
     // حساب قيمة الطلب
+    const EXTRACTION_WINDOW = 10 // آخر 10 رسائل للاستخراج فقط
     let totalAmount = null
+    let extractedCity = null
     let extractedAddress = null
+    let extractedQty = 1
     if (orderConfirmed && selectedItem) {
-      const allMsgs = (conversation.messages || []).map(m => m.content).join(" ")
-      extractedAddress = extractAddressFromMessages(allMsgs)
-      const qty = extractQuantityFromMessages(allMsgs)
-      totalAmount = selectedItem.price * qty
+      if (isServiceMode) {
+        // ✅ Service mode: fixed price, no quantity/address extraction needed
+        totalAmount = selectedItem.price
+      } else {
+        // ✅ [FIX] Product mode: reload messages from DB to avoid race condition with in-memory array
+        const freshMessages = await prisma.message.findMany({
+          where: { conversationId: conversation.id },
+          orderBy: { createdAt: 'asc' },
+          select: { role: true, content: true },
+        })
+
+        // ✅ [FIX] استخدام آخر 10 رسائل USER فقط لتجنب التقاط بيانات قديمة أو رسائل AGENT
+        const userMessages = freshMessages.filter(m => m.role === 'USER')
+        const recentUserMsgs = userMessages.slice(-EXTRACTION_WINDOW)
+        const recentMessagesText = recentUserMsgs.map(m => m.content).join('\n')
+
+        console.log(`📍 [Extraction] Using ${recentUserMsgs.length} USER messages from ${userMessages.length} total`)
+
+        // ✅ FINAL: خزن المدينة والعنوان منفصلين
+        const extracted = extractCityAndAddressFromUserMessages(recentUserMsgs)
+        extractedCity = extracted.city
+        extractedAddress = extracted.address
+        if (extractedAddress) {
+          console.log(`📍 [Address] ✅ city="${extractedCity || '-'}" addr="${extractedAddress.slice(0, 60)}"`)
+          } else {
+          console.warn(`⚠️ [Address] ❌ No address found in last ${recentUserMsgs.length} user messages`)
+        }
+
+        // ✅ [FIX] استخرج الكمية من USER فقط كذلك
+        extractedQty = extractQuantityFromMessages(recentMessagesText)
+        totalAmount = selectedItem.price * extractedQty
+        console.log(`🔢 [Quantity] ✅ Extracted: ${extractedQty} | Total: ${totalAmount} DH`)
+      }
+    }
+
+    // ✅ FINAL GUARD: لا تسجّل Order ولا تغلق المحادثة إلا إذا توفرت المدينة + العنوان + الكمية
+    // هذا يمنع أي نقص/خلط بسبب اختلاف طريقة كتابة الزبناء (عربي/فرنسي/لاتيني)
+    if (!isServiceMode && orderConfirmed) {
+      const missing = []
+      if (!extractedCity) missing.push("city")
+      if (!extractedAddress) missing.push("address")
+      if (!extractedQty || extractedQty < 1) missing.push("quantity")
+
+      if (missing.length > 0) {
+        // ✅ Create a draft order so the user can review/fix from dashboard
+        // Avoid duplicates: only one draft per conversation within 5 minutes
+        try {
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
+          const existingDraft = await prisma.order.findFirst({
+            where: {
+              userId,
+              customerId: customer.id,
+              conversationId: conversation.id,
+              createdAt: { gte: fiveMinutesAgo },
+              notes: { contains: "⚠️ DRAFT_ORDER" },
+            },
+            select: { id: true },
+          })
+
+          if (!existingDraft && selectedItem) {
+            const safeQty = extractedQty && extractedQty >= 1 ? extractedQty : 1
+            const draftTotal = selectedItem.price * safeQty
+            await prisma.order.create({
+              data: {
+                userId,
+                customerId: customer.id,
+                conversationId: conversation.id,
+                customerName: customer.name,
+                customerPhone: customer.phone,
+                productId: selectedItem.id,
+                productName: selectedItem.name,
+                quantity: safeQty,
+                totalAmount: draftTotal,
+                city: extractedCity,
+                address: extractedAddress,
+                status: "PENDING",
+                notes: `⚠️ DRAFT_ORDER — missing: ${missing.join(", ")} — المحادثة: ${conversation.id}`,
+              }
+            })
+          }
+        } catch (e) {
+          // keep silent; we still ask user for missing info
+        }
+
+        const lang = agent?.language === "darija"
+          ? "darija"
+          : agent?.language === "french"
+            ? "french"
+            : "arabic"
+
+        const ask = (() => {
+          if (lang === "french") {
+            if (missing.length === 1 && missing[0] === "city") return "Parfait. Tu es dans quelle ville ?"
+            if (missing.length === 1 && missing[0] === "address") return "Top. Donne-moi l’adresse complète (quartier/rue + رقم الدار إذا كاين)."
+            if (missing.length === 1 && missing[0] === "quantity") return "Combien de pièces tu veux exactement ?"
+            return "Juste pour confirmer: c’est quoi la ville et l’adresse complète (et la quantité) ?"
+          }
+          if (lang === "darija") {
+            if (missing.length === 1 && missing[0] === "city") return "مزيان 👌 شنو هي المدينة ديالك؟"
+            if (missing.length === 1 && missing[0] === "address") return "مزيان 👌 عطيني العنوان الكامل ديالك (الحي/الزنقة/رقم الدار) باش نكمّلو الطلبية."
+            if (missing.length === 1 && missing[0] === "quantity") return "شحال من وحدة بغيتي بالضبط؟"
+            return "باش نكملو الطلبية: عطيني المدينة + العنوان الكامل + شحال من وحدة بغيتي."
+          }
+          // Arabic
+          if (missing.length === 1 && missing[0] === "city") return "ممتاز 👌 ما هي مدينتك؟"
+          if (missing.length === 1 && missing[0] === "address") return "ممتاز 👌 ما هو العنوان الكامل (الحي/الشارع/رقم المنزل)؟"
+          if (missing.length === 1 && missing[0] === "quantity") return "كم الكمية المطلوبة بالضبط؟"
+          return "لإكمال الطلب: ما هي المدينة والعنوان الكامل والكمية؟"
+        })()
+
+        reply = ask
+        stage = "CLOSING"
+        score = Math.max(score || 0, 80)
+        orderConfirmed = false
+      }
     }
 
     // إعداد الصور
@@ -1257,11 +2132,19 @@ export async function processIncomingMessage({
     })
 
     // 8. تحديث المحادثة
+    // لا نحفظ CLOSED إلا مع orderConfirmed — وإلا الواجهة تعرض "طلب/حجز مؤكد" بلا طلبية فعلية
+    let finalStage = stage || conversation.stage
+    let finalScore = Math.max(conversation.score || 0, score || 0)
+    if (!orderConfirmed && stage === "CLOSED" && conversation.stage !== "CLOSED") {
+      finalStage = "CLOSING"
+      finalScore = Math.min(finalScore, SCORE_MAP.CLOSING)
+    }
+
     await prisma.conversation.update({
       where: { id: conversation.id },
       data: {
-        stage: stage || conversation.stage,
-        score: Math.max(conversation.score || 0, score || 0),
+        stage: finalStage,
+        score: finalScore,
         isRead: false,
         updatedAt: new Date(),
         ...(orderConfirmed && {
@@ -1286,30 +2169,54 @@ export async function processIncomingMessage({
 
       if (!isServiceMode && selectedItem) {
         try {
-          // ✅ [DEBUG] Log all messages for quantity extraction debugging
-          const allMsgsContent = (conversation.messages || []).map(m => ({ role: m.role, content: m.content.substring(0, 100) }))
-          console.log(`🔍 [DEBUG] All messages for quantity extraction:`, JSON.stringify(allMsgsContent, null, 2))
-          
-          const msgsText = (conversation.messages || []).map(m => m.content).join(" ")
-          const extractedQty = extractQuantityFromMessages(msgsText)
-          console.log(`🔍 [DEBUG] Extracted quantity: ${extractedQty} from ${msgsText.length} chars`)
+          // ✅ [FIX] استخدم الكمية المستخرجة مسبقاً من USER messages فقط
+          console.log(`📍 [Address] Saving to DB: city="${extractedCity || '—'}" addr="${extractedAddress || '⚠️ NULL'}"`)
+          console.log(`📦 [Quantity] Using pre-extracted qty: ${extractedQty}`)
           
           const order = await prisma.order.create({
             data: {
               userId,
               customerId: customer.id,
+              conversationId: conversation.id,
               customerName: customer.name,
               customerPhone: customer.phone,
               productId: selectedItem.id,
               productName: selectedItem.name,
               quantity: extractedQty,
               totalAmount: selectedItem.price * extractedQty,
+              city: extractedCity,
               address: extractedAddress,
               status: "PENDING",
-              notes: `طلب تلقائي من واتساب — المحادثة: ${conversation.id}`,
+              notes: extractedAddress
+                ? `طلب تلقائي من واتساب — المحادثة: ${conversation.id}`
+                : `⚠️ طلب بدون عنوان — يحتاج متابعة يدوية — المحادثة: ${conversation.id}`,
             }
           })
-          console.log(`✅ [${normalizedPhone}] Order created: ${order.id} | Qty: ${order.quantity} | Total: ${order.totalAmount}${extractedAddress ? ' | Address: ' + extractedAddress : ''}`)
+          console.log(`✅ Order created: ${order.id.slice(0, 6)}... | Addr: "${order.address?.slice(0, 30)}..." | Qty: ${order.quantity} | Total: ${order.totalAmount}`)
+
+          // ✅ Persist “memory” for next turns (re-order / follow-up questions)
+          try {
+            await prisma.conversation.update({
+              where: { id: conversation.id },
+              data: {
+                context: {
+                  ...safeObj(conversation.context),
+                  lastConfirmed: {
+                    at: new Date().toISOString(),
+                    productId: selectedItem.id,
+                    productName: selectedItem.name,
+                    quantity: extractedQty,
+                    city: extractedCity || null,
+                    address: extractedAddress || null,
+                    customerName: customer.name || null,
+                    orderId: order.id,
+                  },
+                },
+              },
+            })
+          } catch (e) {
+            console.error("❌ [processIncomingMessage] context save error:", e?.message || e)
+          }
 
           // ✅ نقص المخزون بعد تأكيد الطلب
           try {
@@ -1317,60 +2224,59 @@ export async function processIncomingMessage({
             if (currentProduct && currentProduct.stock !== null && currentProduct.stock !== undefined) {
               const newStock = Math.max(0, currentProduct.stock - order.quantity)
               await prisma.product.update({ where: { id: selectedItem.id }, data: { stock: newStock } })
-              console.log(`📦 [${normalizedPhone}] Stock updated: ${selectedItem.name} ${currentProduct.stock} → ${newStock}`)
+              console.log(`📦 Stock updated: product=${selectedItem.id.slice(0, 6)}... ${currentProduct.stock} → ${newStock}`)
             }
           } catch (err) {
-            console.error(`❌ [${normalizedPhone}] Error updating stock:`, err.message)
+            console.error(`❌ [processIncomingMessage] Error updating stock:`, err.message)
           }
         } catch (err) {
-          console.error(`❌ [${normalizedPhone}] Error creating order:`, err.message)
+          console.error(`❌ [processIncomingMessage] Error creating order:`, err.message)
         }
       }
 
       if (isServiceMode && selectedItem) {
         try {
-          // ✅ إعادة تحميل الرسائل من قاعدة البيانات للحصول على جميع الرسائل بما فيها الأخيرة
+          // ✅ إعادة تحميل الرسائل من قاعدة البيانات للحصول على الرسائل الأخيرة فقط
           const allConversationMessages = await prisma.message.findMany({
             where: { conversationId: conversation.id },
             orderBy: { createdAt: "asc" },
             take: 50
           })
 
-          // ✅ جمع كل رسائل المحادثة للبحث عن التاريخ والوقت
-          const allMessages = allConversationMessages
+          // ✅ استخدام آخر 10 رسائل فقط للاستخراج لتجنب التقاط بيانات قديمة
+          const recentMessagesForExtraction = allConversationMessages.slice(-EXTRACTION_WINDOW)
+          const recentMessagesText = recentMessagesForExtraction
             .map(m => m.content)
             .join(" ")
 
-          // 🔍 DEBUG: Log what we're extracting from
-          console.log(`🔍 [${normalizedPhone}] Reloaded ${allConversationMessages.length} messages from DB`)
-          console.log(`🔍 [${normalizedPhone}] allMessages type: ${typeof allMessages}, length: ${allMessages.length}`)
-          console.log(`🔍 [${normalizedPhone}] allMessages content: "${allMessages.substring(0, 300)}..."`)
+          // 🔍 DEBUG: Log what we're extracting from (sanitized)
+          console.log(`🔍 Reloaded ${allConversationMessages.length} messages, using last ${EXTRACTION_WINDOW} for extraction, total chars: ${recentMessagesText.length}`)
 
-          console.log(`📅 [${normalizedPhone}] Extracting date from messages...`)
+          console.log(`📅 Extracting date from recent messages...`)
 
-          // ✅ استخراج التاريخ بالدالة الذكية
-          let extractedDate = extractDateFromMessages(allMessages)
+          // ✅ استخراج التاريخ بالدالة الذكية من السياق الحديث
+          let extractedDate = extractDateFromMessages(recentMessagesText)
 
           // Fallback أخير: غدا الساعة 10:00
           if (!extractedDate) {
-            console.log(`📅 [${normalizedPhone}] No date found — using tomorrow 10:00 as fallback`)
+            console.log(`📅 No date found — using tomorrow 10:00 as fallback`)
             extractedDate = new Date()
             extractedDate.setDate(extractedDate.getDate() + 1)
             extractedDate.setHours(10, 0, 0, 0)
           } else {
-            // ✅ استخراج الوقت بالدالة الذكية
-            const time = extractTimeFromMessages(allMessages)
+            // ✅ استخراج الوقت بالدالة الذكية من السياق الحديث
+            const time = extractTimeFromMessages(recentMessagesText)
             if (time) {
               extractedDate.setHours(time.hours, time.minutes, 0, 0)
-              console.log(`⏰ [${normalizedPhone}] Time set: ${time.hours}:${time.minutes}`)
+              console.log(`⏰ Time set: ${time.hours}:${time.minutes}`)
             } else {
               // وقت افتراضي 10:00 إذا ما لقيناش وقت
               extractedDate.setHours(10, 0, 0, 0)
-              console.log(`⏰ [${normalizedPhone}] No time found — defaulting to 10:00`)
+              console.log(`⏰ No time found — defaulting to 10:00`)
             }
           }
 
-          console.log(`📅 [${normalizedPhone}] Final appointment date: ${extractedDate.toISOString()}`)
+          console.log(`📅 Final appointment date: ${extractedDate.toISOString()}`)
 
           const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
           const existingAppointment = await prisma.appointment.findFirst({
@@ -1382,7 +2288,7 @@ export async function processIncomingMessage({
           })
 
           if (existingAppointment) {
-            console.log(`⚠️ [${normalizedPhone}] Duplicate appointment skipped (${existingAppointment.id})`)
+            console.log(`⚠️ Duplicate appointment skipped (${existingAppointment.id.slice(0, 6)}...)`)
           } else {
             const appointment = await prisma.appointment.create({
               data: {
@@ -1399,10 +2305,33 @@ export async function processIncomingMessage({
                 confirmationSent: true,
               }
             })
-            console.log(`✅ [${normalizedPhone}] Appointment created: ${appointment.id} on ${extractedDate.toISOString()}`)
+            console.log(`✅ Appointment created: ${appointment.id.slice(0, 6)}... on ${extractedDate.toISOString()}`)
+
+            // ✅ Persist “memory” for next turns (book again / ask about appointment)
+            try {
+              await prisma.conversation.update({
+                where: { id: conversation.id },
+                data: {
+                  context: {
+                    ...safeObj(conversation.context),
+                    lastConfirmedService: {
+                      at: new Date().toISOString(),
+                      serviceId: selectedItem.id,
+                      serviceName: selectedItem.name,
+                      date: appointment.date,
+                      status: appointment.status,
+                      appointmentId: appointment.id,
+                      customerName: customer.name || null,
+                    },
+                  },
+                },
+              })
+            } catch (e) {
+              console.error("❌ [processIncomingMessage] service context save error:", e?.message || e)
+            }
           }
         } catch (err) {
-          console.error(`❌ [${normalizedPhone}] Error creating appointment:`, err.message)
+          console.error(`❌ [processIncomingMessage] Error creating appointment:`, err.message)
         }
       }
 
@@ -1434,8 +2363,8 @@ export async function processIncomingMessage({
 
     return {
       reply,
-      stage,
-      score,
+      stage: orderConfirmed ? "CLOSED" : finalStage,
+      score: orderConfirmed ? 100 : finalScore,
       orderConfirmed,
       imageUrls,
     }

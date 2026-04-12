@@ -679,6 +679,7 @@ export default function SettingsPage() {
   const [workStart, setWorkStart] = useState("09:00")
   const [workEnd, setWorkEnd] = useState("18:00")
   const [offlineMessage, setOfflineMessage] = useState("")
+  const [welcomeMessage, setWelcomeMessage] = useState("")
   const [appointmentConfirmMessage, setAppointmentConfirmMessage] = useState("")
   const [appointmentReminderMessage, setAppointmentReminderMessage] = useState("")
   const [appointmentCancellationMessage, setAppointmentCancellationMessage] = useState("")
@@ -764,6 +765,8 @@ export default function SettingsPage() {
         style: agent.style || "friendly",
         language: agent.language || "darija",
         instructions: agent.instructions || "",
+        productInstructions: agent.productInstructions || "",
+        serviceInstructions: agent.serviceInstructions || "",
         selectedProductId: agent.selectedProductId || "",
         selectedServiceId: agent.selectedServiceId || "",
         mode: agent.mode || "product"
@@ -772,6 +775,7 @@ export default function SettingsPage() {
       setWorkStart(agent.workStart || "09:00")
       setWorkEnd(agent.workEnd || "18:00")
       setOfflineMessage(agent.offlineMessage || "")
+      setWelcomeMessage(agent.welcomeMessage || "")
       setAppointmentConfirmMessage(agent.appointmentConfirmMessage || "")
       setAppointmentReminderMessage(agent.appointmentReminderMessage || "")
       setAppointmentCancellationMessage(agent.appointmentCancellationMessage || "")
@@ -790,6 +794,7 @@ export default function SettingsPage() {
       await updateAgent({
         ...localAgent,
         workHoursEnabled, workStart, workEnd, offlineMessage,
+        welcomeMessage: welcomeMessage?.trim() || null,
         appointmentConfirmMessage, appointmentReminderMessage,
         appointmentCancellationMessage,
         orderConfirmMessage, orderShipMessage, orderDeliverMessage, orderCancelledMessage,
@@ -873,6 +878,9 @@ export default function SettingsPage() {
   const mode = localAgent.mode || "product"
   const isActive = agent?.isActive || false
   const instructions = localAgent.instructions || ""
+  const productInstructions = localAgent.productInstructions || ""
+  const serviceInstructions = localAgent.serviceInstructions || ""
+  const modeInstructions = mode === "service" ? serviceInstructions : productInstructions
   const objectionReplies = agent?.objectionReplies || []
 
   const orderPh = uiLang === "fr" ? {
@@ -964,6 +972,22 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {/* Manual Mode Banner */}
+      {!isActive && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-700">
+              وضع التحدث المباشر مفعّل
+            </p>
+            <p className="text-[12px] text-amber-600/80 mt-0.5">
+              الـ AI متوقف — ردودك تصل مباشرة للزبائن عبر واتساب
+            </p>
+          </div>
+          <MessageCircle size={16} className="text-amber-500 shrink-0" />
+        </div>
+      )}
 
       {/* ── Tabs ───────────────────────────────────────── */}
       <div className="flex gap-1 p-1 bg-secondary/50 border border-border/60 rounded-2xl overflow-x-auto scrollbar-none">
@@ -1117,20 +1141,62 @@ export default function SettingsPage() {
                 </Field>
               )}
 
-              {/* تعليمات خاصة */}
-              <Field label={t('settings.instructions_label')}>
+              {/* تعليمات خاصة حسب الوضع (منتجات / خدمات) */}
+              <Field label={mode === "service" ? (t('settings.service_instructions_label') || t('settings.instructions_label')) : (t('settings.product_instructions_label') || t('settings.instructions_label'))}>
                 <div className="relative">
-                  <textarea value={instructions} rows={4}
-                    onChange={(e) => setLocalAgent({ ...localAgent, instructions: e.target.value })}
-                    placeholder={t('settings.instructions_hint')}
+                  <textarea value={modeInstructions} rows={4}
+                    onChange={(e) => setLocalAgent({
+                      ...localAgent,
+                      ...(mode === "service"
+                        ? { serviceInstructions: e.target.value }
+                        : { productInstructions: e.target.value }
+                      )
+                    })}
+                    placeholder={mode === "service"
+                      ? (t('settings.service_instructions_hint') || t('settings.instructions_hint'))
+                      : (t('settings.product_instructions_hint') || t('settings.instructions_hint'))
+                    }
                     className={cn(textareaCls, "pr-10")} />
                   <button
                     onClick={() => { setModalConfig({
-                      title: t('settings.instructions_label'),
-                      value: instructions,
-                      placeholder: t('settings.instructions_hint'),
-                      hint: t('settings.instructions_hint'),
-                      onSave: (val) => setLocalAgent({ ...localAgent, instructions: val })
+                      title: mode === "service"
+                        ? (t('settings.service_instructions_label') || t('settings.instructions_label'))
+                        : (t('settings.product_instructions_label') || t('settings.instructions_label')),
+                      value: modeInstructions,
+                      placeholder: mode === "service"
+                        ? (t('settings.service_instructions_hint') || t('settings.instructions_hint'))
+                        : (t('settings.product_instructions_hint') || t('settings.instructions_hint')),
+                      hint: mode === "service"
+                        ? (t('settings.service_instructions_hint') || t('settings.instructions_hint'))
+                        : (t('settings.product_instructions_hint') || t('settings.instructions_hint')),
+                      onSave: (val) => setLocalAgent({
+                        ...localAgent,
+                        ...(mode === "service" ? { serviceInstructions: val } : { productInstructions: val })
+                      })
+                    }); setModalOpen(true); }}
+                    className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
+                    title={t('settings.expand')}
+                  >
+                    <Maximize2 size={16} />
+                  </button>
+                </div>
+              </Field>
+
+              {/* رسالة الترحيب المخصصة */}
+              <Field label={t('settings.welcome_msg') || "رسالة الترحيب"} icon={MessageCircle}
+                hint={t('settings.welcome_msg_hint') || "يُستخدم {name} لاسم الزبون — تُرسل كأول رد فقط، ثم يتولى AI الباقي"}>
+                <div className="relative">
+                  <textarea value={welcomeMessage} rows={3}
+                    onChange={(e) => setWelcomeMessage(e.target.value)}
+                    placeholder={t('settings.welcome_msg_placeholder') || "مرحبا {name} 👋 أنا مساعد المتجر، كيف نقدر نعاونك اليوم؟"}
+                    className={cn(textareaCls, "pr-10")} />
+                  <button
+                    onClick={() => { setModalConfig({
+                      title: t('settings.welcome_msg') || "رسالة الترحيب",
+                      value: welcomeMessage,
+                      placeholder: t('settings.welcome_msg_placeholder') || "مرحبا {name} 👋 أنا مساعد المتجر، كيف نقدر نعاونك اليوم؟",
+                      hint: t('settings.welcome_msg_hint') || "يُستخدم {name} لاسم الزبون — تُرسل كأول رد فقط، ثم يتولى AI الباقي",
+                      onSave: (val) => setWelcomeMessage(val)
                     }); setModalOpen(true); }}
                     className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
                     title={t('settings.expand')}

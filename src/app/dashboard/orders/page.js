@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { ordersAPI } from "@/lib/api"
+import { ordersAPI, productsAPI } from "@/lib/api"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { cn } from "@/lib/utils"
 import {
@@ -222,25 +222,71 @@ function DeleteModal({ open, name, onConfirm, onCancel, isProcessing }) {
 /* ─── Order Detail Modal ──────────────────────────────────── */
 function OrderDetailModal({ order, onClose, onStatusChange, onDeleteRequest, sendMessage }) {
   const { t, language } = useLanguage()
-  const [trackingNumber, setTrackingNumber] = useState(order?.trackingNumber || "")
+  const [isEditing, setIsEditing] = useState(false)
+  const [form, setForm] = useState({
+    customerName: order?.customerName || "",
+    customerPhone: order?.customerPhone || "",
+    productName: order?.productName || "",
+    quantity: order?.quantity ?? 1,
+    totalAmount: order?.totalAmount ?? 0,
+    city: order?.city || "",
+    address: order?.address || "",
+    notes: order?.notes || "",
+    trackingNumber: order?.trackingNumber || "",
+  })
   const [savingTracking, setSavingTracking] = useState(false)
+  const [savingEdits, setSavingEdits] = useState(false)
 
   useEffect(() => {
-    setTrackingNumber(order?.trackingNumber || "")
-  }, [order?.trackingNumber])
+    setForm({
+      customerName: order?.customerName || "",
+      customerPhone: order?.customerPhone || "",
+      productName: order?.productName || "",
+      quantity: order?.quantity ?? 1,
+      totalAmount: order?.totalAmount ?? 0,
+      city: order?.city || "",
+      address: order?.address || "",
+      notes: order?.notes || "",
+      trackingNumber: order?.trackingNumber || "",
+    })
+    setIsEditing(false)
+  }, [order?.id])
 
   if (!order) return null
 
   async function saveTrackingNumber() {
     setSavingTracking(true)
     try {
-      await ordersAPI.update(order.id, { trackingNumber })
-      // Update local order state
-      order.trackingNumber = trackingNumber
+      const updated = await ordersAPI.update(order.id, { trackingNumber: form.trackingNumber })
+      onStatusChange?.(order.id, order.status, updated?.data)
     } catch (err) {
       console.error(err)
     } finally {
       setSavingTracking(false)
+    }
+  }
+
+  async function saveEdits() {
+    setSavingEdits(true)
+    try {
+      const payload = {
+        customerName: form.customerName,
+        customerPhone: form.customerPhone,
+        productName: form.productName,
+        quantity: Number(form.quantity) || 1,
+        totalAmount: Number(form.totalAmount) || 0,
+        city: form.city,
+        address: form.address,
+        notes: form.notes,
+        trackingNumber: form.trackingNumber,
+      }
+      const updated = await ordersAPI.update(order.id, payload)
+      onStatusChange?.(order.id, order.status, updated?.data)
+      setIsEditing(false)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSavingEdits(false)
     }
   }
 
@@ -251,102 +297,267 @@ function OrderDetailModal({ order, onClose, onStatusChange, onDeleteRequest, sen
     ? `/dashboard/conversations?id=${order.conversationId}`
     : null
 
-  const rows = [
-    { icon: Hash,       label: t('orders.order_id'),      value: order.id.slice(-8).toUpperCase() },
-    { icon: User,       label: t('orders.customer_name'), value: order.customerName || "—" },
-    { icon: Phone,      label: t('orders.customer_phone'),value: order.customerPhone || "—" },
-    { icon: Tag,        label: t('orders.product_name'),  value: order.productName || "—" },
-    { icon: Tag,        label: t('orders.qty'),           value: `${order.quantity || 1}` },
-    { icon: DollarSign, label: t('orders.price'),         value: `${order.totalAmount || 0} ${t('common.currency')}` },
-    { icon: MapPin,     label: t('common.address'),       value: order.address || "—" },
-    order.notes && { icon: StickyNote, label: t('common.notes'), value: order.notes },
-  ].filter(Boolean)
+  const isRtl = language === 'ar'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
       <div className="absolute inset-0 bg-black/60 dark:bg-black/80" onClick={onClose} />
-      <div className="relative w-full max-w-md border border-border shadow-2xl bg-card flex flex-col max-h-[90vh]" style={{ borderRadius: "24px" }}>
+      <div
+        className="relative w-full sm:max-w-md border border-border shadow-2xl bg-card flex flex-col max-h-[95dvh] sm:max-h-[85vh] rounded-t-3xl sm:rounded-2xl overflow-hidden"
+        dir={isRtl ? 'rtl' : 'ltr'}
+      >
+        {/* Drag handle - mobile only */}
+        <div className="sm:hidden w-full flex justify-center pt-3 pb-1 shrink-0">
+          <div className="w-12 h-1.5 rounded-full bg-border" />
+        </div>
+
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-secondary shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-brand-600 flex items-center justify-center">
-              <Package size={16} className="text-white" />
+        <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 sm:py-3 border-b border-border bg-secondary/50 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center shadow-sm">
+              <Package size={18} className="text-white" />
             </div>
             <div>
               <p className="text-sm font-bold text-foreground">{t('common.details')}</p>
-              <p className="text-[12px] text-muted-foreground">#{order.id.slice(-8).toUpperCase()}</p>
+              <p className="text-xs text-muted-foreground font-medium">#{order.id.slice(-8).toUpperCase()}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <StatusBadge status={order.status} />
-            <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors focus:outline-none focus:ring-2 focus:ring-brand-600/20"
+            >
               <X size={16} />
             </button>
           </div>
         </div>
 
         {/* Body */}
-        <div className="p-5 flex flex-col gap-3 overflow-y-auto">
-          <div className="grid grid-cols-1 gap-2">
-            {rows.map(({ icon: Icon, label, value }) => (
-              <div key={label} className="flex items-start gap-3 py-2.5 px-3 rounded-xl border border-border/60">
-                <Icon size={15} className="text-muted-foreground mt-0.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] text-muted-foreground">{label}</p>
-                  <p className="text-[13px] font-semibold text-foreground break-words">{value}</p>
-                </div>
-              </div>
-            ))}
-            
-            {/* حقل رقم التتبع القابل للتعديل */}
-            <div className="flex items-start gap-3 py-2.5 px-3 rounded-xl border border-border/60">
-              <Truck size={15} className="text-muted-foreground mt-0.5 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-[12px] text-muted-foreground mb-1">{t('orders.tracking')}</p>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={trackingNumber}
-                    onChange={(e) => setTrackingNumber(e.target.value)}
-                    placeholder={t('orders.tracking_placeholder') || "أدخل رقم التتبع"}
-                    className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-[13px] focus:outline-none focus:border-brand-600"
-                  />
-                  <button
-                    onClick={saveTrackingNumber}
-                    disabled={savingTracking || trackingNumber === (order.trackingNumber || "")}
-                    className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-[12px] font-medium hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {savingTracking ? <Loader2 size={14} className="animate-spin" /> : t('common.save')}
-                  </button>
-                </div>
-              </div>
+        <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-3 space-y-3">
+
+          {/* ─── Edit / Save Bar ─── */}
+          <div className="flex items-center justify-between gap-2 border border-border/60 rounded-lg px-3 py-2 bg-secondary/20">
+            <p className="text-xs text-muted-foreground">
+              {isEditing ? (t('common.edit') || "Modifier") : (t('common.details') || "Détails")}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsEditing(v => !v)}
+                className="px-2.5 py-1.5 rounded-lg border border-brand-600/25 bg-brand-600/10 text-xs font-semibold text-brand-700 hover:bg-brand-600/15 hover:border-brand-600/35 transition-colors"
+              >
+                {isEditing ? t('common.cancel') : (t('common.edit') || "Modifier")}
+              </button>
+              {isEditing && (
+                <button
+                  onClick={saveEdits}
+                  disabled={savingEdits}
+                  className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-semibold hover:bg-brand-700 disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {savingEdits ? <Loader2 size={12} className="animate-spin" /> : null}
+                  {t('common.save')}
+                </button>
+              )}
             </div>
           </div>
-          <p className="text-[12px] text-muted-foreground text-center pt-1">{date}</p>
+
+          {/* ─── Compact Info Grid ─── */}
+          <div className="border border-border/60 rounded-lg overflow-hidden text-sm">
+            {/* Customer Name */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-secondary/20">
+              <User size={14} className="text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground text-xs">{t('orders.customer_name')}</span>
+              {isEditing ? (
+                <input
+                  className="ms-auto w-48 max-w-[60%] px-2 py-1 bg-background border border-border rounded-md text-xs"
+                  value={form.customerName}
+                  onChange={(e) => setForm(p => ({ ...p, customerName: e.target.value }))}
+                />
+              ) : (
+                <span className="font-semibold text-foreground ms-auto truncate">{order.customerName || "—"}</span>
+              )}
+            </div>
+            {/* Phone */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40">
+              <Phone size={14} className="text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground text-xs">{t('orders.customer_phone')}</span>
+              {isEditing ? (
+                <input
+                  className="ms-auto w-48 max-w-[60%] px-2 py-1 bg-background border border-border rounded-md text-xs ltr"
+                  dir="ltr"
+                  value={form.customerPhone}
+                  onChange={(e) => setForm(p => ({ ...p, customerPhone: e.target.value }))}
+                />
+              ) : (
+                <span className="font-semibold text-foreground ms-auto ltr truncate" dir="ltr">{order.customerPhone || "—"}</span>
+              )}
+            </div>
+            {/* Product */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40 bg-secondary/20">
+              <Tag size={14} className="text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground text-xs">{t('orders.product_name')}</span>
+              {isEditing ? (
+                <input
+                  className="ms-auto w-60 max-w-[70%] px-2 py-1 bg-background border border-border rounded-md text-xs"
+                  value={form.productName}
+                  onChange={(e) => setForm(p => ({ ...p, productName: e.target.value }))}
+                />
+              ) : (
+                <span className="font-semibold text-foreground ms-auto truncate">{order.productName || "—"}</span>
+              )}
+            </div>
+            {/* Qty & Amount */}
+            <div className="grid grid-cols-2 border-b border-border/40">
+              <div className="flex items-center gap-2 px-3 py-2 border-e border-border/40">
+                <Hash size={14} className="text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground text-xs">{t('orders.qty')}</span>
+                {isEditing ? (
+                  <input
+                    type="number"
+                    min="1"
+                    className="ms-auto w-20 px-2 py-1 bg-background border border-border rounded-md text-xs"
+                    value={form.quantity}
+                    onChange={(e) => setForm(p => ({ ...p, quantity: e.target.value }))}
+                  />
+                ) : (
+                  <span className="font-semibold text-foreground ms-auto">{order.quantity || 1}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2">
+                <DollarSign size={14} className="text-brand-600 shrink-0" />
+                <span className="text-muted-foreground text-xs">{t('orders.price')}</span>
+                {isEditing ? (
+                  <input
+                    type="number"
+                    min="0"
+                    className="ms-auto w-24 px-2 py-1 bg-background border border-border rounded-md text-xs"
+                    value={form.totalAmount}
+                    onChange={(e) => setForm(p => ({ ...p, totalAmount: e.target.value }))}
+                  />
+                ) : (
+                  <span className="font-semibold text-brand-600 ms-auto">{order.totalAmount || 0} {t('common.currency')}</span>
+                )}
+              </div>
+            </div>
+            {/* Address */}
+            <div className="flex items-start gap-2 px-3 py-2 border-b border-border/40 bg-secondary/20">
+              <MapPin size={14} className="text-muted-foreground shrink-0 mt-0.5" />
+              <span className="text-muted-foreground text-xs shrink-0">{t('common.address')}</span>
+              {isEditing ? (
+                <textarea
+                  rows={2}
+                  className="ms-auto w-[70%] px-2 py-1 bg-background border border-border rounded-md text-xs resize-none text-end"
+                  value={form.address}
+                  onChange={(e) => setForm(p => ({ ...p, address: e.target.value }))}
+                />
+              ) : (
+                <span className="font-medium text-foreground ms-auto text-end leading-snug">{order.address || "—"}</span>
+              )}
+            </div>
+
+            {/* City */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border/40">
+              <MapPin size={14} className="text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground text-xs">{t('common.city') || "Ville"}</span>
+              {isEditing ? (
+                <input
+                  className="ms-auto w-48 max-w-[60%] px-2 py-1 bg-background border border-border rounded-md text-xs"
+                  value={form.city}
+                  onChange={(e) => setForm(p => ({ ...p, city: e.target.value }))}
+                />
+              ) : (
+                <span className="font-semibold text-foreground ms-auto truncate">{order.city || "—"}</span>
+              )}
+            </div>
+            {/* Date */}
+            <div className="flex items-center gap-2 px-3 py-2">
+              <Clock size={14} className="text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground text-xs">{t('common.date')}</span>
+              <span className="font-medium text-foreground ms-auto">{date}</span>
+            </div>
+          </div>
+
+          {/* ─── Tracking Number ─── */}
+          <div className="border border-border/60 rounded-lg p-3 bg-secondary/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Truck size={14} className="text-purple-600" />
+              <span className="text-xs font-semibold text-foreground">{t('orders.tracking')}</span>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.trackingNumber}
+                onChange={(e) => setForm(p => ({ ...p, trackingNumber: e.target.value }))}
+                placeholder={t('orders.tracking_placeholder') || "أدخل رقم التتبع"}
+                className="flex-1 min-w-0 px-3 py-2 bg-background border border-border rounded-lg text-sm focus:outline-none focus:border-brand-600 focus:ring-1 focus:ring-brand-600/10 transition-all"
+              />
+              <button
+                onClick={saveTrackingNumber}
+                disabled={savingTracking || form.trackingNumber === (order.trackingNumber || "")}
+                className="shrink-0 px-4 py-2 bg-brand-600 text-white rounded-lg text-xs font-medium hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+              >
+                {savingTracking ? <Loader2 size={14} className="animate-spin" /> : t('common.save')}
+              </button>
+            </div>
+          </div>
+
+          {/* ─── Notes ─── */}
+          <div className="flex items-start gap-2 px-3 py-2.5 border border-amber-200/50 rounded-lg bg-amber-50/30">
+            <StickyNote size={14} className="text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-muted-foreground mb-0.5">{t('common.notes')}</p>
+              {isEditing ? (
+                <textarea
+                  rows={2}
+                  className="w-full px-2 py-1 bg-background border border-border rounded-md text-xs resize-none"
+                  value={form.notes}
+                  onChange={(e) => setForm(p => ({ ...p, notes: e.target.value }))}
+                />
+              ) : (
+                <p className="text-sm font-medium text-foreground break-words">{order.notes || "—"}</p>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3.5 border-t border-border bg-secondary flex items-center gap-2 shrink-0">
-          {conversationLink && (
-            <a href={conversationLink}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-medium border border-border hover:bg-brand-600/10 hover:border-brand-600/30 hover:text-brand-600 text-muted-foreground transition-all"
+        <div className="px-4 sm:px-5 py-2.5 sm:py-3 border-t border-border bg-secondary/30 shrink-0">
+          <div className="flex items-center gap-2">
+            {/* View Conversation - Icon Button */}
+            {conversationLink ? (
+              <a
+                href={conversationLink}
+                className="flex items-center justify-center w-9 h-9 rounded-lg border border-border bg-background hover:bg-brand-600/5 hover:border-brand-600/30 hover:text-brand-600 text-muted-foreground transition-all focus:outline-none focus:ring-2 focus:ring-brand-600/20"
+                title={t('orders.view_conv')}
+              >
+                <MessageCircle size={16} />
+              </a>
+            ) : (
+              <div className="flex items-center justify-center w-9 h-9 rounded-lg border border-border/50 bg-secondary/50 text-muted-foreground/50 cursor-not-allowed">
+                <MessageCircle size={16} />
+              </div>
+            )}
+
+            {/* Status Dropdown - Flex 1 */}
+            <div className="flex-1">
+              <StatusDropdown
+                orderId={order.id}
+                currentStatus={order.status}
+                onUpdated={(id, status) => { onStatusChange(id, status) }}
+                sendMessage={sendMessage}
+                trackingNumber={form.trackingNumber}
+              />
+            </div>
+
+            {/* Delete - Danger */}
+            <button
+              onClick={() => { onClose(); onDeleteRequest(order.id, order.productName) }}
+              className="flex items-center justify-center w-9 h-9 rounded-lg border border-red-200 bg-red-50/50 text-red-600 hover:bg-red-500/10 hover:border-red-300 transition-all focus:outline-none focus:ring-2 focus:ring-red-500/20"
+              title={t('common.delete')}
             >
-              <MessageCircle size={14} />{t('orders.view_conv')}
-            </a>
-          )}
-          <StatusDropdown
-            orderId={order.id}
-            currentStatus={order.status}
-            onUpdated={(id, status) => { onStatusChange(id, status) }}
-            sendMessage={sendMessage}
-            trackingNumber={trackingNumber}
-          />
-          <button
-            onClick={() => { onClose(); onDeleteRequest(order.id, order.productName) }}
-            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-medium border border-red-200 text-red-500 hover:bg-red-500/10 transition-all"
-          >
-            <Trash2 size={14} />{t('common.delete')}
-          </button>
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -357,6 +568,11 @@ function OrderDetailModal({ order, onClose, onStatusChange, onDeleteRequest, sen
 function OrderCard({ order, onStatusChange, onDeleteRequest, sendMessage, onOpenDetail }) {
   const { t, language } = useLanguage()
   const [trackingNumber] = useState(order?.trackingNumber || "")
+
+  const needsReview =
+    (!order.city || !String(order.city).trim()) ||
+    (!order.address || !String(order.address).trim()) ||
+    (order.notes && String(order.notes).includes("⚠️ DRAFT_ORDER"))
 
   const date = new Date(order.createdAt).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR', {
     day: "numeric", month: "short", year: "numeric",
@@ -374,7 +590,14 @@ function OrderCard({ order, onStatusChange, onDeleteRequest, sendMessage, onOpen
           <div className="w-10 h-10 rounded-xl bg-brand-600 flex items-center justify-center shrink-0">
             <Package size={18} className="text-white" />
           </div>
-          <StatusBadge status={order.status} />
+          <div className="flex items-center gap-2">
+            {needsReview && (
+              <span className="text-[11px] font-bold px-2 py-1 rounded-lg border border-amber-400/30 bg-amber-500/10 text-amber-700">
+                {t('orders.needs_review') || "Needs review"}
+              </span>
+            )}
+            <StatusBadge status={order.status} />
+          </div>
         </div>
 
         {/* Product name */}
@@ -444,13 +667,33 @@ function AddOrderModal({ onClose, onCreated }) {
   const { t } = useLanguage()
   const [form, setForm] = useState({
     customerName: "", customerPhone: "", productName: "",
-    quantity: 1, totalAmount: "", address: "", notes: "",
+    quantity: 1, totalAmount: "", city: "", address: "", notes: "",
   })
+  const [products, setProducts] = useState([])
+  const [loadingProducts, setLoadingProducts] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    async function loadProducts() {
+      setLoadingProducts(true)
+      try {
+        const res = await productsAPI.getAll({ active: true })
+        if (!mounted) return
+        setProducts(Array.isArray(res.data) ? res.data : [])
+      } catch (err) {
+        console.error(err)
+      } finally {
+        if (mounted) setLoadingProducts(false)
+      }
+    }
+    loadProducts()
+    return () => { mounted = false }
+  }, [])
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.customerName || !form.customerPhone || !form.productName || !form.totalAmount) return
+    if (!form.customerName || !form.customerPhone || (!form.productName && !form.productId) || !form.totalAmount) return
     setSaving(true)
     try {
       const res = await ordersAPI.create({ ...form, quantity: Number(form.quantity), totalAmount: Number(form.totalAmount) })
@@ -468,48 +711,84 @@ function AddOrderModal({ onClose, onCreated }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg border border-border rounded-3xl shadow-2xl bg-card">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 bg-secondary/50">
+      <div className="relative w-full max-w-3xl border border-border rounded-3xl shadow-2xl bg-card">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border/50 bg-secondary/50">
           <div className="flex items-center gap-2">
             <span className="w-1 h-4 rounded-full bg-brand-600" />
             <p className="text-sm font-bold text-foreground">{t('orders.add_order')}</p>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors text-sm">✕</button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-3">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 flex flex-col gap-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-[13px] font-medium text-muted-foreground">{t('orders.customer_name')} *</label>
-              <input className={inputCls} value={form.customerName} onChange={e => setForm({...form, customerName: e.target.value})} required />
+            {/* Left column */}
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] font-medium text-muted-foreground">{t('orders.customer_name')} *</label>
+                <input className={inputCls} value={form.customerName} onChange={e => setForm({...form, customerName: e.target.value})} required />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] font-medium text-muted-foreground">{t('orders.customer_phone')} *</label>
+                <input className={inputCls} value={form.customerPhone} onChange={e => setForm({...form, customerPhone: e.target.value})} required />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] font-medium text-muted-foreground">{t('orders.product_name')} *</label>
+                <select
+                  className={inputCls}
+                  value={form.productId || ""}
+                  onChange={(e) => {
+                    const id = e.target.value || ""
+                    const p = products.find(x => x.id === id)
+                    setForm(prev => ({
+                      ...prev,
+                      productId: id || null,
+                      productName: p?.name || prev.productName,
+                      totalAmount: p?.price ? String(p.price) : prev.totalAmount,
+                    }))
+                  }}
+                  disabled={loadingProducts}
+                  required
+                >
+                  <option value="">{loadingProducts ? "..." : (t('common.select') || "Sélectionner")}</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} — {p.price} {t('common.currency')}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-muted-foreground">{t('common.quantity')}</label>
+                  <input type="number" min="1" className={inputCls} value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-medium text-muted-foreground">{t('orders.price')} *</label>
+                  <input type="number" min="0" className={inputCls} value={form.totalAmount} onChange={e => setForm({...form, totalAmount: e.target.value})} required />
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[13px] font-medium text-muted-foreground">{t('orders.customer_phone')} *</label>
-              <input className={inputCls} value={form.customerPhone} onChange={e => setForm({...form, customerPhone: e.target.value})} required />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[13px] font-medium text-muted-foreground">{t('orders.product_name')} *</label>
-              <input className={inputCls} value={form.productName} onChange={e => setForm({...form, productName: e.target.value})} required />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[13px] font-medium text-muted-foreground">{t('orders.price')} *</label>
-              <input type="number" min="0" className={inputCls} value={form.totalAmount} onChange={e => setForm({...form, totalAmount: e.target.value})} required />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[13px] font-medium text-muted-foreground">{t('common.quantity')}</label>
-              <input type="number" min="1" className={inputCls} value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[13px] font-medium text-muted-foreground">{t('common.address')}</label>
-              <input className={inputCls} value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
+
+            {/* Right column */}
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] font-medium text-muted-foreground">{t('common.city') || "Ville"}</label>
+                <input className={inputCls} value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] font-medium text-muted-foreground">{t('common.address')}</label>
+                <input className={inputCls} value={form.address} onChange={e => setForm({...form, address: e.target.value})} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] font-medium text-muted-foreground">{t('common.notes')}</label>
+                <textarea className={cn(inputCls, "resize-none")} rows={4} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
+              </div>
             </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[13px] font-medium text-muted-foreground">{t('common.notes')}</label>
-            <textarea className={cn(inputCls, "resize-none")} rows={2} value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
-          </div>
-          <div className="flex gap-2 pt-1 border-t border-border/50">
-            <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-secondary transition-colors">{t('common.cancel')}</button>
-            <button type="submit" disabled={saving} className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-800 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-md shadow-brand-600/20">
+
+          <div className="flex gap-2 pt-2 border-t border-border/50">
+            <button type="button" onClick={onClose} className="flex-1 py-2 border border-border rounded-xl text-sm font-medium hover:bg-secondary transition-colors">
+              {t('common.cancel')}
+            </button>
+            <button type="submit" disabled={saving} className="flex-1 py-2 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-800 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-md shadow-brand-600/20">
               {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
               {saving ? t('common.saving') : t('orders.add_order')}
             </button>
@@ -554,8 +833,19 @@ export default function OrdersPage() {
     return () => clearTimeout(t)
   }, [fetchOrders])
 
-  function handleStatusChange(orderId, newStatus) {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o))
+  // onStatusChange is used both for status updates and for refreshing an order after edits
+  function handleStatusChange(orderId, newStatus, updatedOrder = null) {
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId) return o
+      return {
+        ...o,
+        ...(updatedOrder && typeof updatedOrder === "object" ? updatedOrder : null),
+        status: newStatus,
+      }
+    }))
+    if (updatedOrder && detailOrder?.id === orderId) {
+      setDetailOrder(prev => prev ? { ...prev, ...updatedOrder } : prev)
+    }
   }
 
   function handleDeleteRequest(id, name) {
@@ -766,7 +1056,7 @@ export default function OrdersPage() {
         <OrderDetailModal
           order={detailOrder}
           onClose={() => setDetailOrder(null)}
-          onStatusChange={(id, status) => { handleStatusChange(id, status); setDetailOrder(prev => prev ? { ...prev, status } : prev) }}
+          onStatusChange={(id, status, updatedOrder) => { handleStatusChange(id, status, updatedOrder) }}
           onDeleteRequest={handleDeleteRequest}
           sendMessage={sendMessage}
         />

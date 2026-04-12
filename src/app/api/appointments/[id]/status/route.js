@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getUserFromRequest } from "@/lib/auth"
-import { generateStatusUpdateMessage } from "@/lib/aiAgent"
 import { sendWhatsAppMessage } from "@/lib/whatsapp"
+import { generateStatusUpdateMessage } from "@/lib/aiAgent"
 
 // PATCH /api/appointments/[id]/status
 export async function PATCH(request, { params }) {
@@ -14,7 +14,7 @@ export async function PATCH(request, { params }) {
       )
     }
 
-    const { id } = await params
+    const { id } = params
     const body = await request.json()
     const { status, sendMessage = true } = body
 
@@ -58,9 +58,9 @@ export async function PATCH(request, { params }) {
     })
 
     let messageSent = false
-    let aiMessage = null
+    let sentMessage = null
 
-    // ✅ إرسال رسالة AI تلقائية عند تغيير الحالة (إذا طُلب ذلك)
+    // ✅ إرسال رسالة تلقائية عند تغيير الحالة (إذا طُلب ذلك)
     if (sendMessage && existing.customerPhone) {
       try {
         // جلب إعدادات الـ Agent
@@ -69,15 +69,21 @@ export async function PATCH(request, { params }) {
         })
 
         if (agent?.whatsappPhoneId && agent?.whatsappToken) {
-          // توليد رسالة AI
-          const { message } = await generateStatusUpdateMessage({
+          // ✅ generateStatusUpdateMessage handles templates first, then AI fallback
+          const { message, usedTemplate } = await generateStatusUpdateMessage({
             agent,
             appointment: existing,
             newStatus: status,
             customerName: existing.customerName,
           })
 
-          aiMessage = message
+          if (!message) {
+            throw new Error("Failed to generate message")
+          }
+
+          sentMessage = message
+          const source = usedTemplate ? "custom-template" : "ai-generated"
+          console.log(`📋 [Status] Using ${source} for status ${status}`)
 
           // إرسال الرسالة عبر واتساب
           const result = await sendWhatsAppMessage({
@@ -89,10 +95,12 @@ export async function PATCH(request, { params }) {
 
           if (result.success) {
             messageSent = true
-            console.log(`✅ AI status message sent to ${existing.customerPhone}`)
+            // ✅ PII Safe: mask phone in logs
+            const maskedPhone = existing.customerPhone ? "******" + existing.customerPhone.slice(-4) : "N/A"
+            console.log(`✅ Status message sent to ${maskedPhone} (source: ${source})`)
 
             // حفظ الرسالة في المحادثة إذا وجدت
-            const convIdFromNotes = existing.notes?.match(/المحادثة: ([a-z0-9]+)$/i)?.[1]
+            const convIdFromNotes = existing.notes?.match(/المحادثة: ([a-z0-9-]+)$/i)?.[1]
             if (convIdFromNotes) {
               await prisma.message.create({
                 data: {
@@ -103,13 +111,13 @@ export async function PATCH(request, { params }) {
               })
             }
           } else {
-            console.error(`❌ Failed to send AI message:`, result.error)
+            console.error(`❌ Failed to send status message:`, result.error)
           }
         } else {
           console.log(`⚠️ WhatsApp not connected for user ${user.id}`)
         }
       } catch (msgError) {
-        console.error(`❌ Error sending AI message:`, msgError)
+        console.error(`❌ Error sending status message:`, msgError)
         // لا نفشل الطلب بأكمله إذا فشل إرسال الرسالة
       }
     }
@@ -121,7 +129,7 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({
       data: updated,
       messageSent,
-      aiMessage: aiMessage || null,
+      message: sentMessage || null,
     })
   } catch (error) {
     console.error(

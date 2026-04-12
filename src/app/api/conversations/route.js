@@ -7,10 +7,15 @@ import {
 } from "@/lib/response"
 
 export async function GET(request) {
-  const user = await getUserFromRequest(request)
-  if (!user) return unauthorizedResponse()
-
   try {
+    const user = await getUserFromRequest(request)
+    if (!user) {
+      console.warn("❌ GET /conversations: User not authenticated")
+      return unauthorizedResponse()
+    }
+
+    console.log(`📍 GET /conversations for user: ${user.email}`)
+
     const { searchParams } = new URL(request.url)
     const stage = searchParams.get("stage")
     const search = searchParams.get("search") || ""
@@ -20,17 +25,12 @@ export async function GET(request) {
 
     const where = {
       userId: user.id,
-
-      // استثناء ARCHIVED دائماً
-      // إلا إذا طلب stage محدد بالاسم
-      // التعامل مع CLOSED_ONLY → تحويله إلى CLOSED
       ...(!stage || stage === "all"
         ? { stage: { notIn: ["ARCHIVED"] } }
         : stage === "CLOSED_ONLY"
           ? { stage: "CLOSED" }
           : { stage }
       ),
-
       ...(search && {
         customer: {
           OR: [
@@ -66,6 +66,7 @@ export async function GET(request) {
       prisma.conversation.count({ where }),
     ])
 
+    console.log(`✅ GET /conversations: Found ${total} conversations`)
     return successResponse({
       conversations,
       pagination: {
@@ -76,7 +77,7 @@ export async function GET(request) {
       }
     })
   } catch (error) {
-    console.error("GET conversations error:", error)
+    console.error("❌ GET conversations error:", error?.message || error)
     return errorResponse("خطأ في جلب المحادثات", 500)
   }
 }

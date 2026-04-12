@@ -10,7 +10,7 @@ export async function GET(request, { params }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
+    const { id } = params
 
     const appointment = await prisma.appointment.findFirst({
       where: { id, userId: user.id },
@@ -51,7 +51,7 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
+    const { id } = params
     const body = await request.json()
     const { customerName, customerPhone, serviceId, serviceName, date, notes } = body
 
@@ -69,15 +69,19 @@ export async function PUT(request, { params }) {
     if (customerPhone !== undefined) updateData.customerPhone = customerPhone
     if (serviceId !== undefined) updateData.serviceId = serviceId
 
-    // Resolve service name if provided
+    // Resolve service name if provided - with ownership check
     if (serviceName !== undefined) {
       updateData.serviceName = serviceName
     } else if (serviceId !== undefined && !serviceName) {
-      const svc = await prisma.service.findUnique({
-        where: { id: serviceId },
+      // Verify service exists and belongs to user
+      const svc = await prisma.service.findFirst({
+        where: { id: serviceId, userId: user.id },
         select: { name: true }
       })
-      updateData.serviceName = svc?.name || existing.serviceName
+      if (!svc) {
+        return NextResponse.json({ error: "Service not found or access denied" }, { status: 403 })
+      }
+      updateData.serviceName = svc.name
     }
 
     if (date !== undefined) {
@@ -90,7 +94,7 @@ export async function PUT(request, { params }) {
     if (notes !== undefined) updateData.notes = notes
 
     const appointment = await prisma.appointment.update({
-      where: { id, userId: user.id },
+      where: { id },
       data: updateData,
     })
 
@@ -109,7 +113,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { id } = await params
+    const { id } = params
 
     // Check if appointment exists and belongs to user
     const existing = await prisma.appointment.findFirst({
@@ -120,7 +124,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: "Appointment not found" }, { status: 404 })
     }
 
-    await prisma.appointment.delete({ where: { id, userId: user.id } })
+    await prisma.appointment.delete({ where: { id } })
 
     return NextResponse.json({ success: true, message: "Appointment deleted successfully" })
   } catch (error) {

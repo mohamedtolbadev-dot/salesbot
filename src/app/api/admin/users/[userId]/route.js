@@ -14,7 +14,9 @@ export async function GET(request, { params }) {
     const admin = await prisma.user.findUnique({ where: { id: decoded.userId }, select: { role: true } })
     if (admin?.role !== "SUPER_ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-    const { userId } = await params
+    const resolvedParams = await Promise.resolve(params)
+    const { userId } = resolvedParams || {}
+    if (!userId) return NextResponse.json({ error: "User ID required" }, { status: 400 })
 
     const [user, orders, appointments, conversations] = await Promise.all([
       prisma.user.findUnique({

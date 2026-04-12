@@ -14,7 +14,9 @@ export async function GET(request, { params }) {
   if (!user) return unauthorizedResponse()
 
   try {
-    const { id } = await params
+    const resolvedParams = await Promise.resolve(params)
+    const { id } = resolvedParams || {}
+    if (!id) return errorResponse("معرف المحادثة غير صالح", 400)
     console.log(`[API] Fetching conversation: ${id} for user: ${user.id}`)
     
     const conversation = await prisma.conversation.findFirst({
@@ -48,15 +50,19 @@ export async function PATCH(request, { params }) {
     const body = await request.json()
     const { isRead, stage, score } = body
 
+    const resolvedParams = await Promise.resolve(params)
+    const { id } = resolvedParams || {}
+    if (!id) return errorResponse("معرف المحادثة غير صالح", 400)
+
     const conversation = await prisma.conversation.findFirst({
-      where: { id: params.id, userId: user.id }
+      where: { id, userId: user.id }
     })
     if (!conversation) {
       return errorResponse("المحادثة غير موجودة", 404)
     }
 
     const updated = await prisma.conversation.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         ...(isRead !== undefined && { isRead }),
         ...(stage !== undefined && { stage }),
@@ -76,7 +82,9 @@ export async function DELETE(request, { params }) {
   if (!user) return unauthorizedResponse()
 
   try {
-    const { id } = await params
+    const resolvedParams = await Promise.resolve(params)
+    const { id } = resolvedParams || {}
+    if (!id) return errorResponse("معرف المحادثة غير صالح", 400)
     
     // Check if conversation exists and belongs to user
     const conversation = await prisma.conversation.findFirst({

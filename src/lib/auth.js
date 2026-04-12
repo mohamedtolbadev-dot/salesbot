@@ -23,7 +23,7 @@ export function generateToken(userId) {
   return jwt.sign(
     { userId },
     JWT_SECRET,
-    { expiresIn: "24h" }  // تقليل من 30 يوم إلى 24 ساعة لأمان أفضل
+    { expiresIn: "7d" }  // جلسة أسبوعية — توازن أمان/راحة
   )
 }
 
@@ -42,19 +42,26 @@ export async function getUserFromRequest(request) {
     const authHeader = request.headers.get("authorization")
     
     if (!authHeader) {
+      console.warn("❌ No authorization header")
       return null
     }
 
     if (!authHeader.startsWith("Bearer ")) {
+      console.warn("❌ Invalid authorization format")
       return null
     }
 
-    const token = authHeader.slice(7) // Remove "Bearer " prefix
+    const token = authHeader.slice(7)
+    console.log(`🔐 Verifying token: ${token.slice(0, 20)}...`)
+    
     const decoded = verifyToken(token)
     
     if (!decoded?.userId) {
+      console.warn("❌ Token verification failed or no userId")
       return null
     }
+
+    console.log(`✅ Token verified, userId: ${decoded.userId}`)
 
     const { prisma } = await import("@/lib/prisma")
     const user = await prisma.user.findUnique({
@@ -62,9 +69,15 @@ export async function getUserFromRequest(request) {
       include: { agent: true }
     })
 
+    if (!user) {
+      console.error("❌ User not found in database:", decoded.userId)
+      return null
+    }
+
+    console.log(`✅ User found: ${user.email}`)
     return user
   } catch (error) {
-    console.error("getUserFromRequest error:", error)
+    console.error("❌ getUserFromRequest error:", error?.message || error)
     return null
   }
 }

@@ -10,7 +10,9 @@ export async function GET(request, { params }) {
   const user = await getUserFromRequest(request)
   if (!user) return unauthorizedResponse()
 
-  const { id } = await params
+  const resolvedParams = await Promise.resolve(params)
+  const { id } = resolvedParams || {}
+  if (!id) return errorResponse("معرف الزبون غير صالح", 400)
 
   try {
     const customer = await prisma.customer.findFirst({
@@ -25,12 +27,6 @@ export async function GET(request, { params }) {
             }
           }
         },
-        orders: {
-          orderBy: { createdAt: "desc" },
-        },
-        appointments: {
-          orderBy: { createdAt: "desc" },
-        },
       }
     })
 
@@ -38,7 +34,31 @@ export async function GET(request, { params }) {
       return errorResponse("الزبون غير موجود", 404)
     }
 
-    return successResponse(customer)
+    // Some legacy records may not have customerId set; fallback to customerPhone match.
+    const [orders, appointments] = await Promise.all([
+      prisma.order.findMany({
+        where: {
+          userId: user.id,
+          OR: [
+            { customerId: id },
+            { customerPhone: customer.phone },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.appointment.findMany({
+        where: {
+          userId: user.id,
+          OR: [
+            { customerId: id },
+            { customerPhone: customer.phone },
+          ],
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    ])
+
+    return successResponse({ ...customer, orders, appointments })
   } catch (error) {
     console.error("GET customer error:", error)
     return errorResponse("خطأ في جلب الزبون", 500)
@@ -49,43 +69,47 @@ export async function DELETE(request, { params }) {
   const user = await getUserFromRequest(request)
   if (!user) return unauthorizedResponse()
 
-  const { id } = await params
+  const resolvedParams = await Promise.resolve(params)
+  const { id } = resolvedParams || {}
+  if (!id) return errorResponse("معرف الزبون غير صالح", 400)
 
   try {
+    // Verify ownership before any destructive operation
     const customer = await prisma.customer.findFirst({
       where: { id, userId: user.id }
     })
     if (!customer) return errorResponse("الزبون غير موجود", 404)
 
-    console.log(`🗑️ [DELETE] Starting deletion for customer: ${id}`)
+    // Get short ID for safe logging
+    const shortId = id.slice(-6)
+    console.log(`🗑️ [DELETE] Starting deletion for customer: ${shortId}`)
 
+    // Get conversation IDs first
     const convIds = (await prisma.conversation.findMany({
       where: { customerId: id },
       select: { id: true }
     })).map(c => c.id)
-    console.log(`🗑️ [DELETE] Found ${convIds.length} conversations`)
 
-    if (convIds.length > 0) {
-      const msgDel = await prisma.message.deleteMany({ where: { conversationId: { in: convIds } } })
-      console.log(`🗑️ [DELETE] Deleted ${msgDel.count} messages`)
+    // ✅ Atomic transaction: all succeed or all rollback
+    const [msgDel, convDel, orderDel, appDel, customerDel] = await prisma.$transaction([
+      convIds.length > 0
+        ? prisma.message.deleteMany({ where: { conversationId: { in: convIds } } })
+        : prisma.message.deleteMany({ where: { id: "__none__" } }), // no-op
+      prisma.conversation.deleteMany({ where: { customerId: id } }),
+      prisma.order.deleteMany({ where: { customerId: id } }),
+      prisma.appointment.deleteMany({ where: { customerId: id } }),
+      prisma.customer.deleteMany({ where: { id, userId: user.id } }),
+    ])
+
+    if (customerDel.count === 0) {
+      return errorResponse("الزبون غير موجود", 404)
     }
-
-    const convDel = await prisma.conversation.deleteMany({ where: { customerId: id } })
-    console.log(`🗑️ [DELETE] Deleted ${convDel.count} conversations`)
-
-    const orderDel = await prisma.order.deleteMany({ where: { customerId: id } })
-    console.log(`🗑️ [DELETE] Deleted ${orderDel.count} orders`)
-
-    const appDel = await prisma.appointment.deleteMany({ where: { customerId: id } })
-    console.log(`🗑️ [DELETE] Deleted ${appDel.count} appointments`)
-
-    await prisma.customer.delete({ where: { id } })
-    console.log(`✅ [DELETE] Customer ${id} deleted successfully`)
+    console.log(`✅ [DELETE] Customer ${shortId} deleted: ${msgDel.count} msgs, ${convDel.count} convs, ${orderDel.count} orders, ${appDel.count} appts`)
 
     return successResponse({ deleted: true })
   } catch (error) {
-    console.error("DELETE customer error full:", error)
-    return errorResponse(`خطأ في حذف الزبون: ${error.message}`, 500)
+    console.error("DELETE customer error:", error?.message || error)
+    return errorResponse("خطأ في حذف الزبون", 500)
   }
 }
 
@@ -93,11 +117,20 @@ export async function PATCH(request, { params }) {
   const user = await getUserFromRequest(request)
   if (!user) return unauthorizedResponse()
 
-  const { id } = await params
+  const resolvedParams = await Promise.resolve(params)
+  const { id } = resolvedParams || {}
+  if (!id) return errorResponse("معرف الزبون غير صالح", 400)
 
   try {
     const { tag } = await request.json()
 
+    // ✅ Tag whitelist validation
+    const VALID_TAGS = ["NEW", "REGULAR", "VIP", "PROSPECT"]
+    if (tag !== undefined && tag !== null && !VALID_TAGS.includes(tag)) {
+      return errorResponse(`الوسم غير صالح. القيم المسموحة: ${VALID_TAGS.join(", ")}`, 400)
+    }
+
+    // Verify ownership
     const customer = await prisma.customer.findFirst({
       where: { id, userId: user.id }
     })
@@ -112,7 +145,7 @@ export async function PATCH(request, { params }) {
 
     return successResponse(updated)
   } catch (error) {
-    console.error("PATCH customer error:", error)
+    console.error("PATCH customer error:", error?.message || error)
     return errorResponse("خطأ في تحديث الزبون", 500)
   }
 }

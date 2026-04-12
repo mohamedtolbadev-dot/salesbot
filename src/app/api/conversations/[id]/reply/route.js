@@ -11,7 +11,9 @@ export async function POST(request, { params }) {
   if (!user) return unauthorizedResponse()
 
   try {
-    const { id } = await params
+    const resolvedParams = await Promise.resolve(params)
+    const { id } = resolvedParams || {}
+    if (!id) return errorResponse("معرف المحادثة غير صالح", 400)
     const { message } = await request.json()
 
     const cleanMessage = sanitizeInput(message)
@@ -29,9 +31,20 @@ export async function POST(request, { params }) {
     })
     if (!agent) return errorResponse("Agent غير موجود", 404)
 
+    // رفض الرد اليدوي إذا AI شغال
     if (agent.isActive) {
-      return errorResponse("أوقف AI Agent أولاً قبل الرد اليدوي", 403)
+      return errorResponse("Agent is active — manual reply not allowed", 403)
     }
+
+    // ✅ WhatsApp config guards
+    if (!agent.whatsappPhoneId || !agent.whatsappToken) {
+      return errorResponse("إعدادات واتساب غير مكتملة (Phone ID أو Token مفقود)", 400)
+    }
+    if (!conversation.customer?.phone) {
+      return errorResponse("رقم هاتف العميل غير متوفر", 400)
+    }
+
+    console.log(`✅ [reply] Sending to customer ${conversation.customer.phone}...`)
 
     const sent = await sendWhatsAppMessage({
       phoneId: agent.whatsappPhoneId,
@@ -41,25 +54,46 @@ export async function POST(request, { params }) {
     })
 
     if (!sent.success) {
+      console.error(`❌ [reply] WhatsApp send failed:`, sent)
       return errorResponse("فشل إرسال الرسالة عبر واتساب", 500)
     }
 
-    const savedMessage = await prisma.message.create({
-      data: {
-        conversationId: id,
-        role: "AGENT",
-        content: cleanMessage,
-      },
-    })
+    console.log(`✅ [reply] Message sent successfully to ${conversation.customer.phone}`)
 
-    await prisma.conversation.update({
-      where: { id },
-      data: { updatedAt: new Date() },
-    })
+    // ✅ After WhatsApp send succeeds, DB save failures should NOT surface as "send failed"
+    // We return success with saved=false so the UI doesn't show a scary error.
+    try {
+      const savedMessage = await prisma.message.create({
+        data: {
+          conversationId: id,
+          role: "AGENT",
+          content: cleanMessage,
+        },
+      })
 
-    return successResponse(savedMessage, 201)
+      await prisma.conversation.update({
+        where: { id },
+        data: { updatedAt: new Date() },
+      })
+
+      return successResponse(savedMessage, 201)
+    } catch (dbErr) {
+      console.error("POST reply DB save error:", dbErr?.message || dbErr)
+      // Minimal message object to allow optimistic UI update
+      return successResponse(
+        {
+          id: `local_${Date.now()}`,
+          conversationId: id,
+          role: "AGENT",
+          content: cleanMessage,
+          createdAt: new Date().toISOString(),
+          _saved: false,
+        },
+        200
+      )
+    }
   } catch (error) {
-    console.error("POST reply error:", error)
+    console.error("POST reply error:", error?.message || error)
     return errorResponse("خطأ في إرسال الرسالة", 500)
   }
 }

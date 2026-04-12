@@ -23,7 +23,9 @@ export async function POST(request, { params }) {
     const decoded = await getSuperAdmin(request)
     if (!decoded) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-    const { id } = await params
+    const resolvedParams = await Promise.resolve(params)
+    const { id } = resolvedParams || {}
+    if (!id) return NextResponse.json({ error: "Invoice ID required" }, { status: 400 })
     const body = await request.json().catch(() => ({}))
     const locale = body.locale?.startsWith("ar") ? "ar" : "fr"
 

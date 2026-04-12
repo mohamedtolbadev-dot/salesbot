@@ -187,7 +187,10 @@ export function sanitizeInput(text) {
 export function getToken() {
   if (typeof window === "undefined") return null
   try {
-    return localStorage.getItem("token")
+    const raw = localStorage.getItem("token")
+    const token = typeof raw === "string" ? raw.trim() : ""
+    if (!token || token === "undefined" || token === "null") return null
+    return token
   } catch {
     return null
   }
