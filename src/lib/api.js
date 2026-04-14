@@ -376,4 +376,7 @@ export const adminAPI = {
     }),
 }
 
+// Generic API request wrapper (alias for fetchAPI)
+export { fetchAPI as apiRequest }
+
 export default fetchAPI

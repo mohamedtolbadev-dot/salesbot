@@ -30,6 +30,7 @@ model User {
   appointments  Appointment[]
   orders        Order[]
   invoices      Invoice[]
+  outboundLeads OutboundLead[]
 
   @@map("users")
 }
@@ -64,6 +65,7 @@ model Agent {
   offlineMessage    String?          @db.Text
   postSaleMessage   String?          @db.Text
   welcomeMessage    String?          @db.Text
+  serviceWelcomeMessage String?     @db.Text
   workEnd           String           @default("18:00")
   workHoursEnabled  Boolean          @default(false)
   workStart         String           @default("09:00")
@@ -84,6 +86,10 @@ model Agent {
 
   // ✅ رابط التتبع من شركة التوصيل (مثال: https://tracking.company.com/?code={tracking})
   trackingUrlTemplate   String? @db.Text
+
+  // ✅ Outbound Sales Settings
+  outboundEnabled       Boolean @default(false)
+  outboundTemplate      String? @db.Text
 
   user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   objectionReplies  ObjectionReply[]
@@ -120,18 +126,22 @@ model Product {
 }
 
 model Service {
-  id          String   @id @default(cuid())
-  userId      String
-  name        String
-  price       Float
-  duration    Int      @default(60)
-  description String?  @db.Text
-  images      String?  @db.Text
-  isActive    Boolean  @default(true)
-  questions   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  price        Float
+  priceMax     Float?
+  duration     Int      @default(60)
+  durationUnit String   @default("minutes")
+  category     String?
+  description  String?  @db.Text
+  features     String?  @db.Text
+  images       String?  @db.Text
+  isActive     Boolean  @default(true)
+  questions    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   appointments Appointment[]
 
   @@map("services")
@@ -340,4 +350,48 @@ model Invoice {
   @@index([clientId])
   @@index([status])
   @@map("invoices")
+}
+
+model OutboundLead {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  customerPhone   String
+  customerName    String?
+
+  // المنتج أو الخدمة المقترحة
+  itemId          String?
+  itemName        String?
+  itemType        String
+  itemPrice       Float?
+
+  // حالة الإرسال
+  status          String    @default("PENDING")
+
+  // Template المرسلة
+  templateName    String?
+  templateBody    String?   @db.Text
+
+  // واتساب
+  whatsappMsgId   String?
+
+  // التتبع
+  sentAt          DateTime?
+  repliedAt       DateTime?
+  convertedAt     DateTime?
+
+  // ربط بالمحادثة لما يرد
+  conversationId  String?
+
+  notes           String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([customerPhone])
+  @@index([status])
+  @@index([createdAt])
+  @@map("outbound_leads")
 }

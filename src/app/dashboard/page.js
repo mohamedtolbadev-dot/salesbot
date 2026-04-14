@@ -811,8 +811,8 @@ export default function DashboardPage() {
   if (error || !stats) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-        <div className="w-12 h-12 rounded-full border border-red-200 bg-red-50 flex items-center justify-center">
-          <AlertCircle size={20} className="text-red-500" />
+        <div className="w-12 h-12 rounded-full border border-brand-600/20 bg-brand-600/5 flex items-center justify-center">
+          <AlertCircle size={20} className="text-brand-600" />
         </div>
         <div className="text-center">
           <p className="text-sm font-semibold text-foreground">{t('common.load_error')}</p>
@@ -889,8 +889,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* ── Conversations Panel ── */}
-        <div className="lg:col-span-2 bg-card border border-border rounded-xl overflow-hidden transition-shadow duration-300 hover:shadow-lg">
-
+        <div className="lg:col-span-2 bg-card border border-border rounded-xl overflow-hidden transition-shadow duration-300 hover:shadow-lg group">
           {/* ✅ Panel header مع فلاتر */}
           <div className="flex flex-col gap-0 border-b border-border">
 
@@ -917,9 +916,9 @@ export default function DashboardPage() {
             {/* ✅ فلاتر منتجات / خدمات */}
             <div className="flex items-center gap-1.5 px-4 pb-2.5">
               {[
-                { key: "all",     label: t('conv.filter_all'),             count: conversations.length },
-                { key: "product", label: `🛍️ ${t('nav.products')}`,  count: productCount },
-                { key: "service", label: `🔧 ${t('nav.services')}`,   count: serviceCount },
+                { key: "all",     label: t('conv.filter_all'),             count: conversations.length, icon: null },
+                { key: "product", label: t('nav.products'),    count: productCount, icon: ShoppingBag },
+                { key: "service", label: t('nav.services'),    count: serviceCount, icon: Wrench },
               ].map(f => (
                 <button
                   key={f.key}
@@ -931,6 +930,7 @@ export default function DashboardPage() {
                       : "bg-secondary text-muted-foreground border-border hover:border-brand-300 hover:text-foreground"
                   )}
                 >
+                  {f.icon && <f.icon size={12} className="shrink-0" />}
                   {f.label}
                   <span className={cn(
                     "text-[11px] px-1 py-0.5 rounded",
@@ -981,9 +981,10 @@ export default function DashboardPage() {
                             {conv.customer?.name || t('common.customer')}
                           </span>
                           {/* ✅ badge نوع المحادثة */}
-                          {conv.type === "service" && (
-                            <span className="text-[11px] text-brand-600 shrink-0">🔧</span>
-                          )}
+                          <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-brand-600 shrink-0">
+                            {conv.type === "service" ? <Wrench size={11} /> : <ShoppingBag size={11} />}
+                            <span>{conv.type === "service" ? t('nav.services') : t('nav.products')}</span>
+                          </span>
                         </div>
                       </div>
                     </td>
@@ -1041,9 +1042,9 @@ export default function DashboardPage() {
                           {conv.customer?.name || t('common.customer')}
                         </span>
                         {/* ✅ badge نوع على موبايل */}
-                        {conv.type === "service" && (
-                          <span className="text-[11px] text-brand-600 shrink-0">🔧</span>
-                        )}
+                        <span className="inline-flex items-center gap-1 text-[11px] text-brand-600 shrink-0">
+                          {conv.type === "service" ? <Wrench size={11} /> : <ShoppingBag size={11} />}
+                        </span>
                       </div>
                       <span className={`text-[13px] font-semibold px-2 py-0.5 rounded-md border shrink-0 ${getStageClassName(conv.stage, conv.type)}`}>
                         {getStageLabel(conv.stage, conv.type, t)}

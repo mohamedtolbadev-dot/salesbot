@@ -14,7 +14,7 @@ export async function PUT(request, { params }) {
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, price, description, images, duration, isActive } = body
+    const { name, price, priceMax, description, images, duration, durationUnit, category, features, isActive } = body
 
     // التحقق من ملكية الخدمة
     const existing = await prisma.service.findFirst({
@@ -25,14 +25,21 @@ export async function PUT(request, { params }) {
       return errorResponse("الخدمة غير موجودة", 404)
     }
 
+    const parsedPrice = price !== undefined ? parseFloat(price) : undefined
+    const parsedPriceMax = priceMax !== undefined ? (priceMax ? parseFloat(priceMax) : null) : undefined
+
     const service = await prisma.service.update({
       where: { id },
       data: {
         ...(name !== undefined && { name: name.trim() }),
-        ...(price !== undefined && { price: isNaN(parseFloat(price)) ? 0 : parseFloat(price) }),
+        ...(parsedPrice !== undefined && { price: isNaN(parsedPrice) ? 0 : parsedPrice }),
+        ...(parsedPriceMax !== undefined && { priceMax: (parsedPriceMax && !isNaN(parsedPriceMax)) ? parsedPriceMax : null }),
         ...(description !== undefined && { description: description?.trim() || null }),
         ...(images !== undefined && { images: images && images.length > 0 ? JSON.stringify(images) : null }),
         ...(duration !== undefined && { duration: isNaN(parseInt(duration)) ? 0 : parseInt(duration) }),
+        ...(durationUnit !== undefined && ["minutes", "hours", "days", "weeks", "months"].includes(durationUnit) && { durationUnit }),
+        ...(category !== undefined && { category: category?.trim() || null }),
+        ...(features !== undefined && { features: features && features.length > 0 ? JSON.stringify(features) : null }),
         ...(isActive !== undefined && { isActive })
       }
     })

@@ -34,7 +34,7 @@ export async function GET(request) {
       where,
       orderBy: { date: "asc" },
       include: {
-        service: { select: { name: true } },
+        service: { select: { name: true, price: true, priceMax: true, duration: true, durationUnit: true, category: true, features: true } },
         customer: { select: { name: true, phone: true } },
       },
     })
@@ -47,6 +47,12 @@ export async function GET(request) {
       date: a.date.toISOString(),
       status: a.status,
       serviceName: a.service?.name || a.serviceName,
+      servicePrice: a.service?.price || null,
+      servicePriceMax: a.service?.priceMax || null,
+      serviceDuration: a.service?.duration || null,
+      serviceDurationUnit: a.service?.durationUnit || "minutes",
+      serviceCategory: a.service?.category || null,
+      serviceFeatures: a.service?.features || null,
       notes: a.notes,
       reminderSent: a.reminderSent,
       confirmationSent: a.confirmationSent,

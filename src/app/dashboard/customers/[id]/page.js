@@ -306,7 +306,7 @@ export default function CustomerProfilePage() {
   if (loading) return <ProfileSkeleton />
   if (error || !customer) return <ErrorState onRetry={fetchCustomer} />
 
-  const tagConfig    = getCustomerTagConfig(customer.tag)
+  const tagConfig    = getCustomerTagConfig(customer.tag, t)
   const conversations = customer.conversations || []
   const orders        = customer.orders || []
   const appointments  = customer.appointments || []
@@ -373,7 +373,7 @@ export default function CustomerProfilePage() {
                       <div className="fixed inset-0 z-10" onClick={() => setEditingTag(false)} />
                       <div className="absolute top-full mt-1 right-0 z-20 bg-card border border-border rounded-xl shadow-xl overflow-hidden w-36">
                         {["NEW", "REGULAR", "VIP", "PROSPECT"].map(tag => {
-                          const cfg = getCustomerTagConfig(tag)
+                          const cfg = getCustomerTagConfig(tag, t)
                           return (
                             <button
                               key={tag}

@@ -18,14 +18,20 @@ export function timeAgo(dateStr, t = null) {
 }
 
 // لون وتسمية مرحلة المحادثة
-export function getStageConfig(stage) {
+export function getStageConfig(stage, t = null, type = "product") {
+  if (stage === "CLOSED") {
+    return {
+      label: t ? (type === "service" ? t('conv.stage_booked') : t('conv.stage_ordered')) : "مكتملة",
+      className: "bg-brand-50 text-brand-700 border-brand-200"
+    }
+  }
+
   const configs = {
-    GREETING: { label: "ترحيب", className: "bg-secondary text-muted-foreground border-border" },
-    DISCOVERY: { label: "استكشاف", className: "bg-blue-100 text-blue-800 border-blue-200" },
-    PITCHING: { label: "إقناع", className: "bg-brand-50 text-brand-800 border-brand-200" },
-    OBJECTION: { label: "اعتراض", className: "bg-red-100 text-red-800 border-red-200" },
-    CLOSED: { label: "مكتملة", className: "bg-green-100 text-green-800 border-green-200" },
-    ABANDONED: { label: "مهجورة", className: "bg-gray-100 text-gray-500 border-gray-200" },
+    GREETING: { label: t ? t('stage.greeting') : "ترحيب", className: "bg-secondary text-muted-foreground border-border" },
+    DISCOVERY: { label: t ? t('stage.discovery') : "استكشاف", className: "bg-blue-100 text-blue-800 border-blue-200" },
+    PITCHING: { label: t ? t('stage.pitching') : "إقناع", className: "bg-brand-50 text-brand-800 border-brand-200" },
+    OBJECTION: { label: t ? t('stage.objection') : "اعتراض", className: "bg-red-100 text-red-800 border-red-200" },
+    ABANDONED: { label: t ? t('stage.abandoned') : "مهجورة", className: "bg-gray-100 text-gray-500 border-gray-200" },
   }
   return configs[stage] || configs.GREETING
 }
@@ -40,15 +46,7 @@ export function getStageLabel(stage, type = "product", t = null) {
       ? "تم الحجز 📅"
       : "تم الطلب ✅"
   }
-  // For other stages, return translated label if t is provided
-  if (t) {
-    const stageKey = stage?.toLowerCase()
-    const translated = t(`stage.${stageKey}`)
-    if (translated !== `stage.${stageKey}`) {
-      return translated
-    }
-  }
-  return getStageConfig(stage).label
+  return getStageConfig(stage, t, type).label
 }
 
 // ✅ دالة تعيد className حسب stage + type
@@ -69,12 +67,12 @@ export function getScoreColor(score) {
 }
 
 // لون وتسمية تصنيف الزبون
-export function getCustomerTagConfig(tag) {
+export function getCustomerTagConfig(tag, t = null) {
   const configs = {
     VIP: { label: "VIP", className: "bg-teal-100 text-teal-800 border-teal-200" },
-    NEW: { label: "جديد", className: "bg-brand-50 text-brand-800 border-brand-200" },
-    REGULAR: { label: "عادي", className: "bg-green-100 text-green-800 border-green-200" },
-    PROSPECT: { label: "محتمل", className: "bg-amber-100 text-amber-800 border-amber-200" },
+    NEW: { label: t ? t('customers.tag_new') : "جديد", className: "bg-brand-50 text-brand-800 border-brand-200" },
+    REGULAR: { label: t ? t('customers.tag_regular') : "عادي", className: "bg-green-100 text-green-800 border-green-200" },
+    PROSPECT: { label: t ? t('customers.tag_prospect') : "محتمل", className: "bg-amber-100 text-amber-800 border-amber-200" },
   }
   return configs[tag] || configs.REGULAR
 }

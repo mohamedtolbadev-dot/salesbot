@@ -36,6 +36,15 @@ export function verifyToken(token) {
   }
 }
 
+// ✅ دالة التحقق من التوكن للـ API Routes (format: { success, user, error })
+export async function authenticateToken(request) {
+  const user = await getUserFromRequest(request)
+  if (!user) {
+    return { success: false, error: "Unauthorized" }
+  }
+  return { success: true, user }
+}
+
 // استخراج User من Request
 export async function getUserFromRequest(request) {
   try {

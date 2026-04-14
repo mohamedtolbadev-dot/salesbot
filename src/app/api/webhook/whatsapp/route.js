@@ -9,6 +9,42 @@ import { processIncomingMessage } from "@/lib/aiAgent"
 import { sanitizeInput } from "@/lib/helpers"
 import crypto from "crypto"
 
+/**
+ * تحديث OutboundLead عند رد الزبون
+ */
+async function trackOutboundReply(userId, customerPhone, conversationId) {
+  try {
+    // البحث عن lead مرسل لنفس الرقم وفي انتظار الرد
+    const lead = await prisma.outboundLead.findFirst({
+      where: {
+        userId,
+        customerPhone,
+        status: "SENT",
+      },
+      orderBy: { sentAt: "desc" },
+    })
+
+    if (!lead) return null
+
+    // تحديث Lead بالرد
+    const updated = await prisma.outboundLead.update({
+      where: { id: lead.id },
+      data: {
+        status: "REPLIED",
+        repliedAt: new Date(),
+        conversationId,
+      },
+    })
+
+    console.log(`✅ Outbound lead ${lead.id} marked as REPLIED`)
+    return updated
+
+  } catch (error) {
+    console.error("❌ trackOutboundReply error:", error.message)
+    return null
+  }
+}
+
 // Verify Meta webhook signature
 function verifySignature(body, signature, appSecret) {
   if (!signature || !appSecret) return false
@@ -221,7 +257,12 @@ export async function POST(request) {
           messageText: sanitizedText,
           whatsappMediaId: incomingMediaId,
         })
-        console.log(`🤖 [${incoming.from}] processIncomingMessage result:`, { skipped: result?.skipped, hasReply: !!result?.reply, replyLength: result?.reply?.length })
+        console.log(`🤖 [${incoming.from}] processIncomingMessage result:`, { skipped: result?.skipped, hasReply: !!result?.reply, replyLength: result?.reply?.length, conversationId: result?.conversationId })
+
+        // ✅ تتبع رد Outbound Lead
+        if (result?.conversationId) {
+          await trackOutboundReply(agent.userId, incoming.from, result.conversationId)
+        }
 
         if (!result || result.skipped || !result.reply) {
           console.log(`ℹ️ [${incoming.from}] تم تخطي الرسالة`)

@@ -42,7 +42,7 @@ export async function PUT(request) {
       selectedProductId, selectedServiceId,
       mode,
       workHoursEnabled, workStart, workEnd, offlineMessage,
-      welcomeMessage, postSaleMessage,
+      welcomeMessage, serviceWelcomeMessage, postSaleMessage,
       appointmentConfirmMessage,
       appointmentReminderMessage,
       appointmentCancellationMessage,
@@ -87,6 +87,7 @@ export async function PUT(request) {
         ...(workEnd !== undefined && { workEnd }),
         ...(offlineMessage !== undefined && { offlineMessage }),
         ...(welcomeMessage !== undefined && { welcomeMessage }),
+        ...(serviceWelcomeMessage !== undefined && { serviceWelcomeMessage }),
         ...(postSaleMessage !== undefined && { postSaleMessage }),
         // ✅ الجديد
         ...(appointmentConfirmMessage !== undefined && {

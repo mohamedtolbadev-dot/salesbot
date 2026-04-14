@@ -32,7 +32,7 @@ export async function POST(request) {
   try {
     const body = await request.json()
     console.log("POST services body:", body)
-    const { name, price, description, images, duration } = body
+    const { name, price, priceMax, description, images, duration, durationUnit, category, features } = body
 
     if (!name?.trim() || price === undefined || price === null) {
       return errorResponse("الاسم والسعر مطلوبان", 400)
@@ -43,13 +43,19 @@ export async function POST(request) {
       return errorResponse("السعر غير صالح", 400)
     }
 
+    const parsedPriceMax = priceMax ? parseFloat(priceMax) : null
+
     const data = {
       userId: user.id,
       name: name.trim(),
       price: parsedPrice,
+      priceMax: (parsedPriceMax && !isNaN(parsedPriceMax) && parsedPriceMax > parsedPrice) ? parsedPriceMax : null,
+      duration: duration ? (isNaN(parseInt(duration)) ? 60 : parseInt(duration)) : 60,
+      durationUnit: ["minutes", "hours", "days", "weeks", "months"].includes(durationUnit) ? durationUnit : "minutes",
+      category: category?.trim() || null,
       description: description?.trim() || null,
+      features: features && features.length > 0 ? JSON.stringify(features) : null,
       images: images && images.length > 0 ? JSON.stringify(images) : null,
-      duration: duration ? (isNaN(parseInt(duration)) ? 60 : parseInt(duration)) : 60
     }
     console.log("Creating service with data:", data)
 

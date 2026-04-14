@@ -15,6 +15,8 @@ export async function sendWhatsAppMessage({
   audioId = null,
   imageId = null,
   videoId = null,
+  videoUrl = null,
+  documentUrl = null,
 }) {
   // التحقق من المدخلات
   if (!phoneId || !token || !to) {
@@ -23,29 +25,38 @@ export async function sendWhatsAppMessage({
   }
 
   // ✅ Input validation improvements
-  if (type === "document" && document && !document.id) {
-    console.error("❌ Document type requires document.id")
-    return { success: false, error: "Document ID is required for document type" }
+  if (type === "document" && document && !document.id && !document.link) {
+    console.error("❌ Document type requires document.id or document.link")
+    return { success: false, error: "Document ID or link is required for document type" }
   }
   if (type === "image" && message && !message.match(/^https?:\/\//)) {
     console.error("❌ Image type requires a valid URL")
     return { success: false, error: "Valid image URL is required for image type" }
   }
 
+  // ✅ Sanitize WhatsApp formatting before sending
+  if (message && type === "text") {
+    message = message
+      .replace(/\*\*\*(.+?)\*\*\*/g, '*$1*')   // ***text*** → *text*
+      .replace(/\*\*(.+?)\*\*/g, '*$1*')         // **text** → *text*
+      .replace(/^(\s*)\*\s+/gm, '$1• ')          // * bullet → • bullet
+      .replace(/\*\s*\*([^*]+)\*/g, '• *$1*')    // * *bold* → • *bold*
+  }
+
   try {
     let body
     if (type === "document" && document) {
-      // إرسال مستند PDF
+      // إرسال مستند (by media ID or URL)
+      const docObj = { filename: document.filename || "file" }
+      if (document.id) docObj.id = document.id
+      else if (document.link) docObj.link = document.link
+      if (message) docObj.caption = message
       body = {
         messaging_product: "whatsapp",
         recipient_type: "individual",
         to: to,
         type: "document",
-        document: {
-          filename: document.filename || "invoice.pdf",
-          caption: message || "",
-          id: document.id  // media ID from upload
-        }
+        document: docObj,
       }
     } else if (type === "image") {
       // Support both URL and media ID for images, with optional caption
@@ -60,9 +71,9 @@ export async function sendWhatsAppMessage({
         type: "image",
         image: imageObj,
       }
-    } else if (type === "video" && videoId) {
-      // إرسال فيديو
-      const videoObj = { id: videoId }
+    } else if (type === "video" && (videoId || videoUrl)) {
+      // إرسال فيديو (by media ID or URL)
+      const videoObj = videoId ? { id: videoId } : { link: videoUrl }
       if (message) videoObj.caption = message
       body = {
         messaging_product: "whatsapp",

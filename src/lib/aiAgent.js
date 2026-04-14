@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma"
 
 // دالة تطبيع رقم الهاتف (منع التكرار)
-function normalizePhone(phone) {
+export function normalizePhone(phone) {
   if (!phone) return null
   
   let normalized = phone.replace(/\D/g, "")
@@ -829,18 +829,48 @@ function buildSystemPrompt(agent, items, objectionReplies, selectedItem, isServi
   let hasImages = false
   let stockWarning = ""
   
+  // Helper: format duration with correct unit
+  const formatDurationForAI = (item) => {
+    if (!isService || !item.duration) return ""
+    const unitMap = { minutes: "دقيقة", hours: "ساعة", days: "يوم", weeks: "أسبوع", months: "شهر" }
+    const unit = unitMap[item.durationUnit] || "دقيقة"
+    return ` — ${item.duration} ${unit}`
+  }
+
+  // Helper: format price (range if priceMax exists)
+  const formatPriceForAI = (item) => {
+    if (item.priceMax && item.priceMax > item.price) {
+      return `${item.price}-${item.priceMax} درهم`
+    }
+    return `${item.price} درهم`
+  }
+
+  // Helper: format service extras (category + features)
+  const formatServiceExtras = (item) => {
+    if (!isService) return ""
+    let extras = ""
+    const catMap = { web: "تطوير ويب", design: "تصميم", marketing: "تسويق رقمي", consulting: "استشارات", training: "تكوين", beauty: "تجميل", health: "صحة", repair: "إصلاح وصيانة", other: "أخرى" }
+    if (item.category && catMap[item.category]) extras += ` [${catMap[item.category]}]`
+    try {
+      const features = item.features ? (typeof item.features === "string" ? JSON.parse(item.features) : item.features) : []
+      if (features.length > 0) extras += ` (${features.join("، ")})`
+    } catch {}
+    return extras
+  }
+
   if (selectedItem) {
     const images = parseImages(selectedItem.images)
     hasImages = images.length > 0
-    const durationInfo = isService && selectedItem.duration 
-      ? ` — ${selectedItem.duration} دقيقة` 
-      : ""
+    const durationInfo = formatDurationForAI(selectedItem)
+    const priceInfo = formatPriceForAI(selectedItem)
+    const serviceExtras = formatServiceExtras(selectedItem)
     // ✅ FIX: إضافة معلومات المخزون للـ AI
     const stockInfo = !isService && selectedItem.stock !== undefined && selectedItem.stock !== null
       ? (selectedItem.stock > 0 ? ` (المخزون: ${selectedItem.stock})` : ` ⚠️ نفد من المخزون`)
       : ""
     stockWarning = !isService && selectedItem.stock !== undefined && selectedItem.stock <= 0
-    itemsList = `- ${selectedItem.name}: ${selectedItem.price} درهم${durationInfo}${stockInfo}`
+    itemsList = `- ${selectedItem.name}: ${priceInfo}${durationInfo}${serviceExtras}${stockInfo}`
+    if (selectedItem.description) itemsList += `\n  الوصف: ${selectedItem.description}`
     if (hasImages) itemsList += `\n- ${images.length} صورة متوفرة`
   } else {
     const allImages = items.filter(p => p.isActive).flatMap(p => parseImages(p.images))
@@ -848,11 +878,13 @@ function buildSystemPrompt(agent, items, objectionReplies, selectedItem, isServi
     itemsList = items
       .filter(p => p.isActive)
       .map(p => {
-        const durationInfo = isService && p.duration ? ` — ${p.duration} دقيقة` : ""
+        const durationInfo = formatDurationForAI(p)
+        const priceInfo = formatPriceForAI(p)
+        const serviceExtras = formatServiceExtras(p)
         const stockInfo = !isService && p.stock !== undefined && p.stock !== null
           ? (p.stock > 0 ? ` (المخزون: ${p.stock})` : ` ⚠️ نفد`)
           : ""
-        return `- ${p.name}: ${p.price} درهم${durationInfo}${stockInfo}`
+        return `- ${p.name}: ${priceInfo}${durationInfo}${serviceExtras}${stockInfo}`
       })
       .join("\n")
   }
@@ -870,6 +902,14 @@ function buildSystemPrompt(agent, items, objectionReplies, selectedItem, isServi
     : (agent.productInstructions ?? agent.instructions)
   )?.trim()
   
+  // ✅ Detect consultative services (need discovery/discussion before booking)
+  const consultativeCategories = ["web", "design", "marketing", "consulting", "training"]
+  const serviceCategory = selectedItem?.category || items?.find(i => i.isActive)?.category || null
+  const isConsultative = isService && (
+    (serviceCategory && consultativeCategories.includes(serviceCategory)) ||
+    (customInstructions && customInstructions.length > 200)
+  )
+
   const stockRule = !isService && selectedItem?.stock !== undefined
     ? (selectedItem.stock === 0
         ? `\n⚠️ هذا المنتج نفد من المخزون (stock = 0). قول: "واه معلبالي هاد المنتج sold out دابا 😅" — ما تبيعش حاجة ما عندكش!`
@@ -899,15 +939,26 @@ ${customInstructions}${stockRule}${imagesRule}` : `أنت ${agent.name} — حر
 📅 [النهار]
 ⏰ [الوقت]
 نأكدوه؟`,
+      summaryConsultative: `صافي خويا 👌 ها الملخص:
+📋 [الباقة/الخدمة المختارة]
+👤 [الاسم]
+📞 [رقم الهاتف]
+🏢 [نوع النشاط/المشروع]
+💰 [الثمن]
+واش نأكدو؟`,
       confirmProduct: `ناضي! الطلب ديالك داز 🚀
 ${confirmTag}
 [STAGE:CLOSED]`,
       confirmService: `الحجز ديالك تأكد 🎉 مرحبا بيك!
 ${confirmTag}
 [STAGE:CLOSED]`,
+      confirmConsultative: `تم التأكيد 🎉 غادي نتواصلو معاك قريباً باش نبداو الخدمة!
+${confirmTag}
+[STAGE:CLOSED]`,
     },
     french: {
-      intro: `Tu es ${agent.name} — vendeur expert sur WhatsApp.
+      intro: customInstructions ? `Tu es ${agent.name} — expert sur WhatsApp.
+${customInstructions}${stockRule}${imagesRule}` : `Tu es ${agent.name} — vendeur expert sur WhatsApp.
 Style: dynamique, malin, confiant, proche du client.
 Tu parles français naturel comme dans une vraie conversation WhatsApp.
 Objectif: confirmer la commande en minimum de messages.`,
@@ -923,15 +974,26 @@ On valide?`,
 📅 [Date]
 ⏰ [Heure]
 On confirme?`,
+      summaryConsultative: `Parfait 👌 Récap:
+📋 [Formule choisie]
+👤 [Nom]
+📞 [Téléphone]
+🏢 [Type d'activité]
+💰 [Prix]
+On valide?`,
       confirmProduct: `Commande reçue 🎉 On t'envoie ça vite!
 ${confirmTag}
 [STAGE:CLOSED]`,
       confirmService: `C'est réservé 🎉 À bientôt!
 ${confirmTag}
 [STAGE:CLOSED]`,
+      confirmConsultative: `C'est confirmé 🎉 On vous contacte très vite pour démarrer!
+${confirmTag}
+[STAGE:CLOSED]`,
     },
     arabic: {
-      intro: `أنت ${agent.name} — بائع خبير على واتساب.
+      intro: customInstructions ? `أنت ${agent.name} — خبير على واتساب.
+${customInstructions}${stockRule}${imagesRule}` : `أنت ${agent.name} — بائع خبير على واتساب.
 شخصيتك: نشيط، ذكي، واثق، قريب من الزبون.
 تتكلم عربية بسيطة وعفوية كأي شخص على واتساب.
 هدفك: تأكيد الطلب بأقل رسائل ممكن.`,
@@ -947,16 +1009,94 @@ ${confirmTag}
 📅 [التاريخ]
 ⏰ [الوقت]
 نعتمد؟`,
+      summaryConsultative: `تمام 👌 الملخص:
+📋 [الباقة/الخدمة]
+👤 [الاسم]
+📞 [الهاتف]
+🏢 [نوع النشاط]
+💰 [السعر]
+نؤكد؟`,
       confirmProduct: `أبشر! رح يوصلك بأقرب 🎉
 ${confirmTag}
 [STAGE:CLOSED]`,
       confirmService: `تم تأكيد الحجز 🎉
 ${confirmTag}
 [STAGE:CLOSED]`,
+      confirmConsultative: `تم التأكيد 🎉 سنتواصل معك قريباً لبدء العمل!
+${confirmTag}
+[STAGE:CLOSED]`,
     }
   }
 
   const p = personalities[lang]
+
+  // ═══ Build goal, summary, rules based on mode ═══
+  let goalSection, summarySection, confirmSection, rulesSection
+
+  if (!isService) {
+    // ── Product mode ──
+    goalSection = "تأكيد الطلبية بأقل رسائل ممكن: المنتج + الكمية + العنوان = ملخص → تأكيد"
+    summarySection = p.summaryProduct
+    confirmSection = p.confirmProduct
+    rulesSection = `═══ قواعد تقنية فقط ═══
+- 1-3 أسطر في كل رد — لا أكثر
+- سؤال واحد فقط في كل رسالة  
+- لا تأكيد بدون ملخص أولاً
+- لا ملخص بدون عنوان
+- كل رد ينتهي بـ [STAGE:xxx]
+${hasImages ? "- أضف [SEND_IMAGES] إذا طلب صور\n" : ""}- ${confirmTag} فقط بعد موافقة الزبون على الملخص`
+
+  } else if (isConsultative) {
+    // ── Consultative service mode (web, marketing, consulting, training, design) ──
+    goalSection = `أنت مستشار محترف، ماشي غير بائع. هدفك:
+1. 🔍 [DISCOVERY] افهم احتياجات الزبون: شنو بغى بالضبط؟ شنو نشاطه؟ شنو أهدافه؟ واش عنده موقع/حل حالي؟
+2. 💡 [PITCHING] اقترح عليه الحل الأنسب من الباقات/الخدمات + وضح ليه علاش هاد الحل مناسب ليه
+3. 🛡️ [OBJECTION] جاوب على أسئلته واعتراضاته بثقة ومعرفة
+4. 📋 [CLOSING] لمن يكون مقتنع: جمع المعلومات (الباقة + الاسم + نوع النشاط) وعطيه ملخص → أكد
+
+⚠️ ممنوع تسرع فالتأكيد! خاصك تفهم الزبون مزيان قبل ما تقترح. اسأل على الأقل 2-3 أسئلة استكشافية.
+⚠️ ما تعرضش كل الباقات دفعة وحدة إلا طلب. اقترح الأنسب حسب ما فهمتي.`
+    summarySection = p.summaryConsultative
+    confirmSection = p.confirmConsultative
+    rulesSection = `═══ قواعد تقنية ═══
+- 2-5 أسطر في كل رد — كافي باش توصل الفكرة
+- سؤال أو سؤالين في كل رسالة كحد أقصى
+- كن طبيعي ومحترف، عطي أمثلة وقيمة مضافة
+- لا تأكيد بدون ملخص أولاً
+- لا ملخص بدون ما تفهم احتياجات الزبون
+- كل رد ينتهي بـ [STAGE:xxx]
+${hasImages ? "- أضف [SEND_IMAGES] إذا طلب صور أو أمثلة\n" : ""}- ${confirmTag} فقط بعد موافقة الزبون على الملخص
+- استعمل المراحل: GREETING → DISCOVERY → PITCHING → OBJECTION → CLOSING → CLOSED`
+
+  } else {
+    // ── Quick booking service mode (beauty, health, repair, etc.) ──
+    goalSection = "تأكيد الحجز بأقل رسائل ممكن: الخدمة + التاريخ + الوقت = ملخص → تأكيد"
+    summarySection = p.summaryService
+    confirmSection = p.confirmService
+    rulesSection = `═══ قواعد تقنية فقط ═══
+- 1-3 أسطر في كل رد — لا أكثر
+- سؤال واحد فقط في كل رسالة  
+- لا تأكيد بدون ملخص أولاً
+- كل رد ينتهي بـ [STAGE:xxx]
+${hasImages ? "- أضف [SEND_IMAGES] إذا طلب صور\n" : ""}- ${confirmTag} فقط بعد موافقة الزبون على الملخص`
+  }
+
+  // ═══ WhatsApp formatting rules (applies to all modes) ═══
+  const formattingRules = `═══ تنسيق WhatsApp — مهم جداً ═══
+- *Bold*: استعمل نجمة وحدة على كل جانب: *كلمة* (ممنوع ** مزدوجة)
+- استعمل Bold غير للعناوين والكلمات المهمة فقط، ماشي كل جملة
+- استعمل ✅ أو • أو ▸ كـ bullet points، ماشي * أو -
+- كل نقطة فسطر وحدها (سطر جديد)
+- خلي سطر فارغ بين الأقسام المختلفة
+- ممنوع تخلط bold (*) مع bullet (*) فنفس السطر
+- الإيموجي فالبداية ديال السطر، ماشي فالوسط
+- أمثلة صحيحة:
+  ✅ Design responsive
+  ✅ Hébergement 1 an مجاني
+  ✅ *Nom de domaine* .ma أو .com
+- أمثلة غالطة:
+  * *Page d'accueil*: الصفحة (❌ خلط bullet مع bold)
+  **Formulaire** (❌ نجمة مزدوجة)`
 
   return `${p.intro}
 
@@ -969,23 +1109,17 @@ ${customerHistory ? `\n═══ تاريخ الزبون ═══\n${customerHi
 "هل أنت روبوت/AI؟" → ${p.robotReply}
 
 ═══ هدفك ═══
-${isService 
-  ? "تأكيد الحجز بأقل رسائل ممكن: الخدمة + التاريخ + الوقت = ملخص → تأكيد"
-  : "تأكيد الطلبية بأقل رسائل ممكن: المنتج + الكمية + العنوان = ملخص → تأكيد"}
+${goalSection}
 
 ═══ نموذج الملخص والتأكيد ═══
-${isService ? p.summaryService : p.summaryProduct}
+${summarySection}
 
 عند الموافقة (نعم/واخا/تمام/ok):
-${isService ? p.confirmService : p.confirmProduct}
+${confirmSection}
 
-═══ قواعد تقنية فقط ═══
-- 1-3 أسطر في كل رد — لا أكثر
-- سؤال واحد فقط في كل رسالة  
-- لا تأكيد بدون ملخص أولاً
-- لا ملخص بدون عنوان (mode: product)
-- كل رد ينتهي بـ [STAGE:xxx]
-${hasImages ? "- أضف [SEND_IMAGES] إذا طلب صور\n" : ""}- ${confirmTag} فقط بعد موافقة الزبون على الملخص
+${rulesSection}
+
+${formattingRules}
 ${currentStage && currentStage !== "GREETING" ? `\nالمرحلة الحالية: ${currentStage} ← تابع منها مباشرة` : ""}`
 }
 
@@ -1546,7 +1680,7 @@ export async function processIncomingMessage({
             },
           })
 
-          return { reply: ask, stage: "DISCOVERY", score: Math.max(conversation.score || 0, 55), orderConfirmed: false, imageUrls: [] }
+          return { reply: ask, stage: "DISCOVERY", score: Math.max(conversation.score || 0, 55), orderConfirmed: false, imageUrls: [], conversationId: conversation.id }
         }
       } catch (e) {
         console.error("❌ [processIncomingMessage] rebook flow error:", e?.message || e)
@@ -1606,7 +1740,7 @@ export async function processIncomingMessage({
             },
           })
 
-          return { reply: replyText, stage: conversation.stage, score: conversation.score, orderConfirmed: false, imageUrls: [] }
+          return { reply: replyText, stage: conversation.stage, score: conversation.score, orderConfirmed: false, imageUrls: [], conversationId: conversation.id }
         }
       } catch (e) {
         console.error("❌ [processIncomingMessage] appointment status intent error:", e?.message || e)
@@ -1667,7 +1801,7 @@ export async function processIncomingMessage({
             },
           })
 
-          return { reply: replyText, stage: conversation.stage, score: conversation.score, orderConfirmed: false, imageUrls: [] }
+          return { reply: replyText, stage: conversation.stage, score: conversation.score, orderConfirmed: false, imageUrls: [], conversationId: conversation.id }
         }
       } catch (e) {
         console.error("❌ [processIncomingMessage] tracking intent error:", e?.message || e)
@@ -1803,7 +1937,9 @@ export async function processIncomingMessage({
     // ✅ [NEW] Custom greeting message for first interaction
     // Check if this is the first message (no previous AGENT messages in conversation)
     const isFirstMessage = !conversation.messages?.some(m => m.role === "AGENT")
-    const customGreeting = agent.welcomeMessage?.trim()
+    const customGreeting = isServiceMode
+      ? (agent.serviceWelcomeMessage?.trim() || agent.welcomeMessage?.trim())
+      : agent.welcomeMessage?.trim()
 
     if (isFirstMessage && customGreeting) {
       // Use custom greeting template with placeholder replacement
@@ -2367,13 +2503,15 @@ export async function processIncomingMessage({
       score: orderConfirmed ? 100 : finalScore,
       orderConfirmed,
       imageUrls,
+      conversationId: conversation.id,
     }
   } catch (error) {
     console.error("processIncomingMessage error:", error)
     return {
       reply: "عذراً، حدث خطأ. حاول مرة أخرى 😊",
       imageUrls: [],
-      error: true
+      error: true,
+      conversationId: conversation?.id || null,
     }
   }
 }

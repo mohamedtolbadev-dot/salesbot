@@ -12,7 +12,7 @@ import { useLanguage } from "@/contexts/LanguageContext"
 import {
   MessageCircle, BarChart3, ShoppingBag,
   Users, Settings, LayoutDashboard, Wrench, Calendar, ClipboardList,
-  FileText, ShieldCheck, UserCog,
+  FileText, ShieldCheck, UserCog, Send,
 } from "lucide-react"
 
 const navItems = [
@@ -24,6 +24,7 @@ const navItems = [
   { key: "nav.products",      href: "/dashboard/products",       icon: ShoppingBag     },
   { key: "nav.services",      href: "/dashboard/services",       icon: Wrench          },
   { key: "nav.customers",     href: "/dashboard/customers",      icon: Users           },
+  { key: "nav.outbound",      href: "/dashboard/outbound",       icon: Send            },
   { key: "nav.invoices",      href: "/dashboard/invoices",       icon: FileText        },
   { key: "nav.settings",      href: "/dashboard/settings",       icon: Settings        },
 ]
@@ -67,6 +68,7 @@ function useNavCountsAndRole({ pollingMs = null } = {}) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [newOrdersBadge, setNewOrdersBadge] = useState(0)
   const [newApptsBadge, setNewApptsBadge] = useState(0)
+  const [todayOutboundCount, setTodayOutboundCount] = useState(0)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -114,6 +116,14 @@ function useNavCountsAndRole({ pollingMs = null } = {}) {
         setNewApptsBadge(appts.filter(a => new Date(a.createdAt) > new Date(last)).length)
       })
       .catch(() => {})
+
+    // Outbound leads (today count)
+    fetchAPI("/api/outbound/leads?limit=1")
+      .then((res) => {
+        if (!mounted) return
+        setTodayOutboundCount(res.data?.stats?.todayCount || 0)
+      })
+      .catch(() => {})
   }, [mounted])
 
   // Initial fetch + optional polling
@@ -150,6 +160,7 @@ function useNavCountsAndRole({ pollingMs = null } = {}) {
     unreadCount,
     newOrdersBadge,
     newApptsBadge,
+    todayOutboundCount,
     markAsSeen,
     refresh,
   }
@@ -162,7 +173,7 @@ export function MobileNav() {
   const pathname = usePathname()
   const { isOpen, close } = useMobileMenu()
   const { t, isRTL } = useLanguage()
-  const { role, unreadCount, newOrdersBadge, newApptsBadge, markAsSeen } = useNavCountsAndRole()
+  const { role, unreadCount, newOrdersBadge, newApptsBadge, todayOutboundCount, markAsSeen } = useNavCountsAndRole()
 
   useEffect(() => { close() }, [pathname])
 
@@ -214,7 +225,7 @@ export function MobileNav() {
               const active = item.href === "/dashboard"
                 ? pathname === "/dashboard"
                 : pathname.startsWith(item.href)
-              const badge = ({"/dashboard/conversations": unreadCount, "/dashboard/orders": newOrdersBadge, "/dashboard/appointments": newApptsBadge})[item.href] || 0
+              const badge = ({"/dashboard/conversations": unreadCount, "/dashboard/orders": newOrdersBadge, "/dashboard/appointments": newApptsBadge, "/dashboard/outbound": todayOutboundCount})[item.href] || 0
               return (
                 <Link
                   key={item.href}
@@ -300,7 +311,7 @@ export function MobileNav() {
 export function Sidebar() {
   const pathname = usePathname()
   const { t } = useLanguage()
-  const { role, unreadCount, newOrdersBadge, newApptsBadge, markAsSeen } = useNavCountsAndRole({ pollingMs: 30_000 })
+  const { role, unreadCount, newOrdersBadge, newApptsBadge, todayOutboundCount, markAsSeen } = useNavCountsAndRole({ pollingMs: 30_000 })
 
   return (
     <aside className="hidden md:flex w-[200px] h-screen flex-col bg-card border-l border-border/50 shrink-0 overflow-hidden">
@@ -316,7 +327,7 @@ export function Sidebar() {
             const active = item.href === "/dashboard"
               ? pathname === "/dashboard"
               : pathname.startsWith(item.href)
-            const badge = ({"/dashboard/conversations": unreadCount, "/dashboard/orders": newOrdersBadge, "/dashboard/appointments": newApptsBadge})[item.href] || 0
+            const badge = ({"/dashboard/conversations": unreadCount, "/dashboard/orders": newOrdersBadge, "/dashboard/appointments": newApptsBadge, "/dashboard/outbound": todayOutboundCount})[item.href] || 0
             return (
               <Link key={item.href} href={item.href}
                 onClick={() => {

@@ -374,28 +374,75 @@ function MediaAttachButton({ conversationId, disabled, onSent }) {
     if (docInputRef.current) docInputRef.current.value = ""
   }, [preview])
 
+  const DIRECT_UPLOAD_LIMIT = 4 * 1024 * 1024 // 4MB — safe margin for Vercel 4.5MB limit
+
   const handleSend = useCallback(async () => {
     if (!preview?.file || !conversationId) return
     setSending(true)
     setError(null)
 
     try {
-      const fd = new FormData()
-      fd.append("file", preview.file)
-      fd.append("type", preview.mediaType)
-
       const token = getToken()
-      const res = await fetch(`/api/conversations/${conversationId}/send-media`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      })
+      const isLargeFile = preview.file.size > DIRECT_UPLOAD_LIMIT
 
-      if (res.status === 413) throw new Error(t('conv.file_too_large'))
+      if (isLargeFile) {
+        // ── Large file: upload directly to Cloudinary from browser ──
+        // 1. Get signed upload credentials from our API (tiny request)
+        const signRes = await fetch("/api/upload-media/sign", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const signData = await signRes.json()
+        if (!signRes.ok) throw new Error(signData.error || t('conv.send_failed'))
+        const { timestamp, signature, folder, api_key, cloud_name } = signData.data
 
-      let data
-      try { data = await res.json() } catch { data = {} }
-      if (!res.ok) throw new Error(data.error || t('conv.send_failed'))
+        // 2. Upload directly to Cloudinary (bypasses Vercel 4.5MB limit)
+        const cloudFd = new FormData()
+        cloudFd.append("file", preview.file)
+        cloudFd.append("timestamp", timestamp)
+        cloudFd.append("signature", signature)
+        cloudFd.append("folder", folder)
+        cloudFd.append("api_key", api_key)
+        cloudFd.append("resource_type", "auto")
+
+        const cloudRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${cloud_name}/auto/upload`,
+          { method: "POST", body: cloudFd }
+        )
+        const cloudData = await cloudRes.json()
+        if (!cloudRes.ok) throw new Error(cloudData.error?.message || t('conv.send_failed'))
+
+        // 3. Send Cloudinary URL to our API (tiny JSON request)
+        const res = await fetch(`/api/conversations/${conversationId}/send-media`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mediaUrl: cloudData.secure_url,
+            type: preview.mediaType,
+            fileName: preview.name,
+          }),
+        })
+        let data
+        try { data = await res.json() } catch { data = {} }
+        if (!res.ok) throw new Error(data.error || t('conv.send_failed'))
+      } else {
+        // ── Small file: send directly via FormData ──
+        const fd = new FormData()
+        fd.append("file", preview.file)
+        fd.append("type", preview.mediaType)
+
+        const res = await fetch(`/api/conversations/${conversationId}/send-media`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        })
+
+        if (res.status === 413) throw new Error(t('conv.file_too_large'))
+
+        let data
+        try { data = await res.json() } catch { data = {} }
+        if (!res.ok) throw new Error(data.error || t('conv.send_failed'))
+      }
 
       handleCancelPreview()
       onSent?.()
@@ -704,6 +751,59 @@ function DocumentMessageViewer({ conversationId, messageId, content }) {
   )
 }
 
+/* ─────────────── Video Message Viewer ─────────────── */
+function VideoMessageViewer({ conversationId, messageId }) {
+  const { t } = useLanguage()
+  const [src, setSrc] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [errored, setErrored] = useState(false)
+
+  useEffect(() => {
+    if (!conversationId || !messageId) return
+    const token = getToken()
+    fetch(`/api/conversations/${conversationId}/messages/${messageId}/media`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => {
+        if (!res.ok) throw new Error()
+        return res.blob()
+      })
+      .then(blob => {
+        setSrc(URL.createObjectURL(blob))
+        setLoading(false)
+      })
+      .catch(() => {
+        setErrored(true)
+        setLoading(false)
+      })
+
+    return () => {
+      if (src) URL.revokeObjectURL(src)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, messageId])
+
+  if (loading) {
+    return (
+      <div className="w-48 h-32 bg-secondary/30 rounded-lg animate-pulse" />
+    )
+  }
+  if (errored || !src) {
+    return (
+      <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+        <Video size={14} />
+        <span>{t('conv.video_load_failed')}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-border bg-black max-w-[280px]">
+      <video src={src} controls preload="metadata" className="w-full max-h-[200px] object-contain" />
+    </div>
+  )
+}
+
 /* ─────────────── Message Bubble ─────────────── */
 function MessageBubble({ msg, customerName, conversationId }) {
   const { t } = useLanguage()
@@ -712,10 +812,12 @@ function MessageBubble({ msg, customerName, conversationId }) {
 
   // Detect message types
   const isImage = contentStr.startsWith("[صورة]") && msg.whatsappMediaId
+  const isVideo = contentStr.startsWith("[فيديو]") && msg.whatsappMediaId  // ✅ Add video detection
   const isDocument = contentStr.startsWith("[مستند:") && msg.whatsappMediaId
   const isVoice = contentStr === "[رسالة صوتية]" && msg.whatsappMediaId
   const isCustomerImage = contentStr === "[صورة]" && !msg.whatsappMediaId
   const isCustomerVoice = contentStr === "[رسالة صوتية]" && !msg.whatsappMediaId
+  const isCustomerVideo = contentStr === "[فيديو]" && !msg.whatsappMediaId  // ✅ Customer video without mediaId
 
   // Show voice player for messages with whatsappMediaId that are voice
   const showVoice = Boolean(isVoice && conversationId)
@@ -750,6 +852,13 @@ function MessageBubble({ msg, customerName, conversationId }) {
               <span className="text-[12px] text-muted-foreground">{imageCaption}</span>
             )}
           </div>
+        ) : isVideo ? (
+          <div className="flex flex-col gap-1.5">
+            <VideoMessageViewer
+              conversationId={conversationId}
+              messageId={msg.id}
+            />
+          </div>
         ) : isDocument ? (
           <DocumentMessageViewer
             conversationId={conversationId}
@@ -772,6 +881,11 @@ function MessageBubble({ msg, customerName, conversationId }) {
           <div className="flex items-center gap-1.5">
             <Mic size={12} className="text-muted-foreground shrink-0" />
             <span className="text-[12px] italic text-muted-foreground">{t('conv.voice_message')}</span>
+          </div>
+        ) : isCustomerVideo ? (
+          <div className="flex items-center gap-1.5">
+            <Video size={12} className="text-muted-foreground shrink-0" />
+            <span className="text-[12px] italic text-muted-foreground">{t('conv.media_video')}</span>
           </div>
         ) : (
           msg.content
@@ -1222,7 +1336,7 @@ function ConversationsContent() {
             </div>
             <span className={cn("text-[12px] font-semibold px-2 py-0.5 rounded-md border",
               getStageClassName(selected.stage, selected.type))}>
-              {getStageLabel(selected.stage, selected.type)}
+              {getStageLabel(selected.stage, selected.type, t)}
             </span>
           </div>
           <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-secondary/20 shrink-0">
@@ -1508,9 +1622,9 @@ function MainLayout({
               const safeScore = typeof conv.score === "number" && !isNaN(conv.score)
                 ? conv.score : 0
               // ✅ getStageLabel متاح الآن لأننا عرّفناه أعلى في MainLayout
-              const stageLabel    = getStageLabel(conv.stage, conv.type)
+              const stageLabel    = getStageLabel(conv.stage, conv.type, t)
               const stageClassName = getStageClassName(conv.stage, conv.type)
-              const stage         = getStageConfig(conv.stage)
+              const stage         = getStageConfig(conv.stage, t, conv.type)
               const scoreColor    = getScoreColor(safeScore)
               return (
                 <ConvCard
@@ -1719,7 +1833,7 @@ function DetailPanel({ selected, messages, messagesLoading, messagesError, onRet
         </div>
         <div className="flex items-center gap-2.5">
           <span className={cn("text-[12px] font-semibold px-2 py-1 rounded-md border", stageClassName)}>
-            {getStageLabel(selected.stage, selected.type)}
+            {getStageLabel(selected.stage, selected.type, t)}
           </span>
           <ScoreBar score={selected.score} color={scoreColor} width="w-16" />
         </div>

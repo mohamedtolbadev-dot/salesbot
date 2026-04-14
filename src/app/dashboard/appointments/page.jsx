@@ -3,10 +3,11 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { appointmentsAPI } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { formatAmount } from "@/lib/helpers"
 import { useLanguage } from "@/contexts/LanguageContext"
 import {
   Calendar, Clock, CheckCircle, XCircle, Trash2, AlertCircle,
-  RefreshCw, Loader2, Phone, FileText, Bell,
+  RefreshCw, Loader2, Phone, FileText, Bell, Tag,
   MessageSquare, AlertTriangle, CalendarDays, CalendarCheck,
   CalendarX, CalendarClock, CalendarRange, Ban, MessageCircle, Eye, ExternalLink, X,
 } from "lucide-react"
@@ -80,10 +81,10 @@ function isPast(isoDate) {
 
 function getStatusConfig(status, t) {
   const configs = {
-    PENDING:   { label: t ? t('appt.status_pending')   : "En attente", className: "bg-amber-50 text-amber-600 border-amber-200" },
-    CONFIRMED: { label: t ? t('appt.status_confirmed') : "Confirmé",   className: "bg-green-50 text-green-600 border-green-200" },
-    CANCELLED: { label: t ? t('appt.status_cancelled') : "Annulé",     className: "bg-red-50 text-red-500 border-red-200" },
-    COMPLETED: { label: t ? t('appt.status_completed') : "Terminé",    className: "bg-blue-50 text-blue-600 border-blue-200" },
+    PENDING:   { label: t ? t('appt.status_pending')   : "En attente", className: "bg-brand-600/5 text-brand-600/70 border-brand-600/15", icon: "⏳" },
+    CONFIRMED: { label: t ? t('appt.status_confirmed') : "Confirmé",   className: "bg-brand-600/10 text-brand-600 border-brand-600/20",   icon: "✓" },
+    CANCELLED: { label: t ? t('appt.status_cancelled') : "Annulé",     className: "bg-muted text-muted-foreground border-border",         icon: "✕" },
+    COMPLETED: { label: t ? t('appt.status_completed') : "Terminé",    className: "bg-brand-600/15 text-brand-800 border-brand-600/25",   icon: "★" },
   }
   return configs[status] || configs.PENDING
 }
@@ -295,135 +296,161 @@ function AppointmentCard({ appointment, onUpdateStatus, onDelete, isProcessing, 
   return (
     <div
       className={cn(
-        "bg-card border rounded-xl p-4 sm:p-5 transition-all duration-200",
-        now ? "border-brand-400 shadow-md shadow-brand-600/10" : "border-border hover:border-brand-300 hover:shadow-md",
-        past && "opacity-60"
+        "bg-card border rounded-xl overflow-hidden transition-all duration-200",
+        now ? "border-brand-400 shadow-md shadow-brand-600/10" : "border-border hover:border-brand-200 hover:shadow-sm",
+        past && "opacity-50"
       )}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <Avatar name={appointment.customerName} />
-          <div className="min-w-0">
-            <p className="text-[16px] font-bold text-foreground truncate">{appointment.customerName}</p>
-            <p className="text-[14px] text-muted-foreground flex items-center gap-1">
-              <Phone size={14} />
-              {appointment.customerPhone}
-            </p>
+      {/* Header */}
+      <div className="p-4 pb-3">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Avatar name={appointment.customerName} />
+            <div className="min-w-0">
+              <p className="text-[15px] font-bold text-foreground truncate">{appointment.customerName}</p>
+              <p className="text-[13px] text-muted-foreground flex items-center gap-1">
+                <Phone size={12} />
+                {appointment.customerPhone}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {now && (
+              <span className="text-[11px] font-bold text-brand-600 bg-brand-600/10 border border-brand-600/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-pulse" />
+                {t('appt.now')}
+              </span>
+            )}
+            <StatusBadge status={appointment.status} />
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {now && (
-            <span className="text-[14px] font-bold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              {t('appt.now')}
+
+        {/* Info */}
+        <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Calendar size={12} className="text-brand-600/60" />
+            {formatAppointmentDate(appointment.date, locale)}
+          </span>
+          <span className="text-border">|</span>
+          <span className="flex items-center gap-1">
+            <Clock size={12} className="text-brand-600/60" />
+            {formatAppointmentTime(appointment.date, locale)}
+          </span>
+        </div>
+
+        {/* Service info */}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-[13px] font-semibold text-foreground">{appointment.serviceName}</span>
+          {appointment.servicePrice && (
+            <span className="text-[12px] font-bold text-brand-600">
+              {appointment.servicePriceMax
+                ? `${formatAmount(appointment.servicePrice)} - ${formatAmount(appointment.servicePriceMax)}`
+                : formatAmount(appointment.servicePrice)
+              }
             </span>
           )}
-          <StatusBadge status={appointment.status} />
+          {appointment.serviceDuration && (
+            <span className="text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+              {appointment.serviceDuration} {t(`services.unit_${appointment.serviceDurationUnit || "minutes"}`)}
+            </span>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-[15px] text-muted-foreground mb-3">
-        <span className="flex items-center gap-1">
-          <Clock size={15} className="text-brand-600" />
-          {formatAppointmentTime(appointment.date, locale)}
-        </span>
-        <span className="flex items-center gap-1">
-          <FileText size={15} className="text-brand-600" />
-          {appointment.serviceName}
-        </span>
+      {/* Actions */}
+      <div className="px-4 py-3 border-t border-border/60 bg-secondary/20 flex flex-wrap items-center gap-1.5">
+        {/* Status actions */}
+        {appointment.status === "PENDING" && (
+          <>
+            <button
+              onClick={() => onUpdateStatus(appointment.id, "CONFIRMED")}
+              disabled={isProcessing}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-brand-600 text-white text-[12px] font-semibold rounded-lg hover:bg-brand-800 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {isProcessing ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+              {t('appt.confirm')}
+            </button>
+            <button
+              onClick={() => onUpdateStatus(appointment.id, "CANCELLED")}
+              disabled={isProcessing}
+              className="flex items-center gap-1 px-2.5 py-1.5 border border-border text-muted-foreground text-[12px] font-semibold rounded-lg hover:bg-secondary active:scale-95 transition-all disabled:opacity-50"
+            >
+              {isProcessing ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
+              {t('appt.cancel_action')}
+            </button>
+          </>
+        )}
+        {appointment.status === "CONFIRMED" && (isPast(appointment.date) || isNow(appointment.date)) && (
+          <button
+            onClick={() => onUpdateStatus(appointment.id, "COMPLETED")}
+            disabled={isProcessing}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-brand-600 text-white text-[12px] font-semibold rounded-lg hover:bg-brand-800 active:scale-95 transition-all disabled:opacity-50"
+          >
+            {isProcessing ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+            {t('appt.complete')}
+          </button>
+        )}
+
+        {/* WhatsApp actions */}
+        {!appointment.confirmationSent && appointment.status === "PENDING" && (
+          <button
+            onClick={() => onSendMessage(appointment.id, "confirm")}
+            disabled={isProcessing}
+            className="flex items-center gap-1 px-2.5 py-1.5 border border-brand-600/30 text-brand-600 text-[12px] font-semibold rounded-lg hover:bg-brand-600/5 active:scale-95 transition-all disabled:opacity-50"
+            title={t('appt.confirm_wa')}
+          >
+            {isProcessing ? <Loader2 size={13} className="animate-spin" /> : <MessageSquare size={13} />}
+            {t('appt.confirm_wa')}
+          </button>
+        )}
+        {!appointment.reminderSent && !isPast(appointment.date) && (
+          <button
+            onClick={() => onSendMessage(appointment.id, "reminder")}
+            disabled={isProcessing}
+            className="flex items-center gap-1 px-2.5 py-1.5 border border-brand-600/30 text-brand-600 text-[12px] font-semibold rounded-lg hover:bg-brand-600/5 active:scale-95 transition-all disabled:opacity-50"
+            title={t('appt.reminder_wa')}
+          >
+            {isProcessing ? <Loader2 size={13} className="animate-spin" /> : <Bell size={13} />}
+            {t('appt.reminder_wa')}
+          </button>
+        )}
+        {(appointment.status === "PENDING" || appointment.status === "CONFIRMED") && !appointment.cancellationSent && (
+          <button
+            onClick={() => onSendMessage(appointment.id, "cancel")}
+            disabled={isProcessing}
+            className="flex items-center gap-1 px-2.5 py-1.5 border border-border text-muted-foreground text-[12px] font-semibold rounded-lg hover:bg-secondary active:scale-95 transition-all disabled:opacity-50"
+            title={t('appt.cancel_wa')}
+          >
+            {isProcessing ? <Loader2 size={13} className="animate-spin" /> : <Ban size={13} />}
+            {t('appt.cancel_wa')}
+          </button>
+        )}
+
+        {/* Right side: details + delete */}
+        <div className="flex-1" />
         <button
           onClick={() => onShowDetails(appointment)}
-          className="flex items-center gap-1 text-brand-600 hover:text-brand-800 transition-colors"
+          className="flex items-center gap-1 px-2.5 py-1.5 text-brand-600 text-[12px] font-semibold rounded-lg hover:bg-brand-600/5 active:scale-95 transition-all"
           title={t('appt.details_title_btn')}
         >
-          <Eye size={15} />
+          <Eye size={13} />
           {t('appt.details')}
         </button>
         {appointment.conversationId && (
           <button
             onClick={() => onGoToConversation(appointment.conversationId)}
-            className="flex items-center gap-1 text-green-600 hover:text-green-700 transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 text-brand-600 text-[12px] font-semibold rounded-lg hover:bg-brand-600/5 active:scale-95 transition-all"
             title={t('appt.conversation_title')}
           >
-            <MessageCircle size={15} />
-            {t('appt.conversation')}
+            <MessageCircle size={13} />
           </button>
         )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-border">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {appointment.status === "PENDING" && (
-            <>
-              <button
-                onClick={() => onUpdateStatus(appointment.id, "CONFIRMED")}
-                disabled={isProcessing}
-                className="flex items-center gap-1 px-3 py-2 bg-green-600 text-white text-[14px] font-semibold rounded-lg hover:bg-green-700 active:scale-95 transition-all disabled:opacity-50"
-              >
-                {isProcessing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
-                {t('appt.confirm')}
-              </button>
-              <button
-                onClick={() => onUpdateStatus(appointment.id, "CANCELLED")}
-                disabled={isProcessing}
-                className="flex items-center gap-1 px-3 py-2 bg-red-600 text-white text-[14px] font-semibold rounded-lg hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50"
-              >
-                {isProcessing ? <Loader2 size={15} className="animate-spin" /> : <XCircle size={15} />}
-                {t('appt.cancel_action')}
-              </button>
-            </>
-          )}
-          {appointment.status === "CONFIRMED" && (isPast(appointment.date) || isNow(appointment.date)) && (
-            <button
-              onClick={() => onUpdateStatus(appointment.id, "COMPLETED")}
-              disabled={isProcessing}
-              className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white text-[14px] font-semibold rounded-lg hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50"
-            >
-              {isProcessing ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
-              {t('appt.complete')}
-            </button>
-          )}
-          {!appointment.confirmationSent && appointment.status === "PENDING" && (
-            <button
-              onClick={() => onSendMessage(appointment.id, "confirm")}
-              disabled={isProcessing}
-              className="flex items-center gap-1 px-3 py-2 bg-brand-600 text-white text-[14px] font-semibold rounded-lg hover:bg-brand-800 active:scale-95 transition-all disabled:opacity-50"
-              title={t('appt.confirm_wa')}
-            >
-              {isProcessing ? <Loader2 size={15} className="animate-spin" /> : <MessageSquare size={15} />}
-              {t('appt.confirm_wa')}
-            </button>
-          )}
-          {!appointment.reminderSent && !isPast(appointment.date) && (
-            <button
-              onClick={() => onSendMessage(appointment.id, "reminder")}
-              disabled={isProcessing}
-              className="flex items-center gap-1 px-3 py-2 bg-amber-500 text-white text-[14px] font-semibold rounded-lg hover:bg-amber-600 active:scale-95 transition-all disabled:opacity-50"
-              title={t('appt.reminder_wa')}
-            >
-              {isProcessing ? <Loader2 size={15} className="animate-spin" /> : <Bell size={15} />}
-              {t('appt.reminder_wa')}
-            </button>
-          )}
-          {(appointment.status === "PENDING" || appointment.status === "CONFIRMED") && !appointment.cancellationSent && (
-            <button
-              onClick={() => onSendMessage(appointment.id, "cancel")}
-              disabled={isProcessing}
-              className="flex items-center gap-1 px-3 py-2 bg-red-500 text-white text-[14px] font-semibold rounded-lg hover:bg-red-600 active:scale-95 transition-all disabled:opacity-50"
-              title={t('appt.cancel_wa')}
-            >
-              {isProcessing ? <Loader2 size={15} className="animate-spin" /> : <Ban size={15} />}
-              {t('appt.cancel_wa')}
-            </button>
-          )}
-        </div>
-        <div className="flex-1"></div>
         <button
           onClick={() => onDelete(appointment.id, appointment.customerName)}
           disabled={isProcessing}
-          className="flex items-center gap-1 px-3 py-2 border border-red-200 text-red-600 text-[14px] font-semibold rounded-lg hover:bg-red-50 active:scale-95 transition-all disabled:opacity-50"
+          className="flex items-center px-2 py-1.5 text-muted-foreground/50 rounded-lg hover:text-red-500 hover:bg-red-500/5 active:scale-95 transition-all disabled:opacity-50"
         >
-          <Trash2 size={15} />
+          <Trash2 size={14} />
         </button>
       </div>
     </div>
@@ -458,17 +485,23 @@ function WeekDayColumn({ date, appointments, onUpdateStatus, onDelete, isProcess
           dayApps.map(app => (
             <div
               key={app.id}
+              onClick={() => onShowDetails(app)}
               className={cn(
-                "p-2 rounded-lg border text-[14px] cursor-pointer transition-all hover:shadow-sm",
-                app.status === "PENDING"   && "bg-amber-50 border-amber-200",
-                app.status === "CONFIRMED" && "bg-green-50 border-green-200",
-                app.status === "CANCELLED" && "bg-red-50 border-red-200",
-                app.status === "COMPLETED" && "bg-blue-50 border-blue-200",
+                "p-2 rounded-lg border text-[13px] cursor-pointer transition-all hover:shadow-sm",
+                getStatusConfig(app.status).className
               )}
             >
               <p className="font-semibold text-foreground">{formatAppointmentTime(app.date)}</p>
               <p className="text-muted-foreground truncate">{app.customerName}</p>
-              <p className="text-[13px] text-brand-600">{app.serviceName}</p>
+              <p className="text-[12px] text-brand-600 truncate">{app.serviceName}</p>
+              {app.servicePrice && (
+                <p className="text-[11px] font-bold text-brand-600/70">
+                  {app.servicePriceMax
+                    ? `${formatAmount(app.servicePrice)} - ${formatAmount(app.servicePriceMax)}`
+                    : formatAmount(app.servicePrice)
+                  }
+                </p>
+              )}
             </div>
           ))
         )}
@@ -485,21 +518,21 @@ function DeleteModal({ open, name, onConfirm, onCancel, isProcessing }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
       <div
         className="relative w-full max-w-sm border border-border rounded-2xl shadow-2xl overflow-hidden bg-card"
         style={{ animation: "slideUp 0.3s ease-out forwards" }}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-red-500/5">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-secondary/30">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
-              <AlertTriangle size={18} className="text-red-500" />
+            <div className="w-8 h-8 rounded-lg bg-brand-600/10 flex items-center justify-center">
+              <AlertTriangle size={18} className="text-brand-600" />
             </div>
-            <p className="text-sm font-bold text-red-500">{t('appt.delete_title')}</p>
+            <p className="text-sm font-bold text-foreground">{t('appt.delete_title')}</p>
           </div>
           <button onClick={onCancel}
             className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-            <XCircle size={18} />
+            <X size={18} />
           </button>
         </div>
         <div className="px-5 py-4">
@@ -507,7 +540,7 @@ function DeleteModal({ open, name, onConfirm, onCancel, isProcessing }) {
             {t('appt.delete_question')}
             <span className="text-brand-600 font-bold mx-1">{name}</span>?
           </p>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <p className="text-[13px] text-muted-foreground leading-relaxed">
             {t('appt.delete_warning')}
           </p>
         </div>
@@ -518,7 +551,7 @@ function DeleteModal({ open, name, onConfirm, onCancel, isProcessing }) {
           </button>
           <button onClick={onConfirm}
             disabled={isProcessing}
-            className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5">
+            className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-800 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5">
             {isProcessing ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
             {t('appt.delete_confirm')}
           </button>
@@ -570,18 +603,18 @@ function AppointmentDetailsModal({ open, appointment, onClose, onUpdateStatus, i
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-start md:items-center justify-center p-4 overflow-y-auto">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="relative w-full max-w-md border border-border rounded-2xl shadow-2xl overflow-hidden bg-card"
+        className="relative w-full max-w-md max-h-[calc(100vh-2rem)] border border-border rounded-2xl shadow-2xl overflow-hidden bg-card flex flex-col"
         style={{ animation: "slideUp 0.3s ease-out forwards" }}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-brand-600/5">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-secondary/30">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-brand-600/10 flex items-center justify-center">
               <CalendarCheck size={18} className="text-brand-600" />
             </div>
-            <p className="text-sm font-bold text-brand-600">{t('appt.details_modal_title')}</p>
+            <p className="text-sm font-bold text-foreground">{t('appt.details_modal_title')}</p>
           </div>
           <button onClick={onClose}
             className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
@@ -589,7 +622,7 @@ function AppointmentDetailsModal({ open, appointment, onClose, onUpdateStatus, i
           </button>
         </div>
         
-        <div className="px-5 py-4 space-y-4">
+        <div className="px-5 py-4 space-y-4 overflow-y-auto min-h-0">
           {/* العميل */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-brand-600/10 flex items-center justify-center text-brand-600 font-bold">
@@ -604,24 +637,59 @@ function AppointmentDetailsModal({ open, appointment, onClose, onUpdateStatus, i
             </div>
           </div>
 
-          {/* الخدمة والتاريخ */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-secondary/30 rounded-xl p-4">
-              <p className="text-[12px] text-muted-foreground mb-1">{t('appt.service_label')}</p>
-              <p className="text-[15px] font-semibold text-foreground">{appointment.serviceName || "—"}</p>
+          {/* الخدمة */}
+          <div className="bg-secondary/30 rounded-xl p-4">
+            <p className="text-[12px] text-muted-foreground mb-1">{t('appt.service_label')}</p>
+            <p className="text-[15px] font-semibold text-foreground">{appointment.serviceName || "—"}</p>
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              {appointment.servicePrice && (
+                <span className="text-[13px] font-bold text-brand-600">
+                  {appointment.servicePriceMax
+                    ? `${formatAmount(appointment.servicePrice)} - ${formatAmount(appointment.servicePriceMax)}`
+                    : formatAmount(appointment.servicePrice)
+                  }
+                </span>
+              )}
+              {appointment.serviceCategory && (
+                <span className="text-[11px] bg-brand-600/10 text-brand-600 px-1.5 py-0.5 rounded-md font-semibold">
+                  {t(`services.cat_${appointment.serviceCategory}`)}
+                </span>
+              )}
+              {appointment.serviceDuration && (
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <Clock size={11} />
+                  {appointment.serviceDuration} {t(`services.unit_${appointment.serviceDurationUnit || "minutes"}`)}
+                </span>
+              )}
             </div>
+            {appointment.serviceFeatures && (() => {
+              try {
+                const features = JSON.parse(appointment.serviceFeatures)
+                if (features.length > 0) return (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {features.map((f, i) => (
+                      <span key={i} className="text-[11px] bg-secondary border border-border text-foreground px-1.5 py-0.5 rounded-md">{f}</span>
+                    ))}
+                  </div>
+                )
+              } catch { return null }
+            })()}
+          </div>
+
+          {/* التاريخ والوقت */}
+          <div className="grid grid-cols-2 gap-3">
             <div className="bg-secondary/30 rounded-xl p-4">
               <p className="text-[12px] text-muted-foreground mb-1">{t('appt.date_label')}</p>
               <p className="text-[15px] font-semibold text-foreground">{formatAppointmentDate(appointment.date, locale)}</p>
             </div>
-          </div>
-
-          {/* الوقت والحالة */}
-          <div className="grid grid-cols-2 gap-3">
             <div className="bg-secondary/30 rounded-xl p-4">
               <p className="text-[12px] text-muted-foreground mb-1">{t('appt.time_label')}</p>
               <p className="text-[15px] font-semibold text-foreground">{formatAppointmentTime(appointment.date, locale)}</p>
             </div>
+          </div>
+
+          {/* الحالة */}
+          <div className="grid grid-cols-1 gap-3">
             <div className="bg-secondary/30 rounded-xl p-4">
               <p className="text-[12px] text-muted-foreground mb-1">{t('appt.status_label')}</p>
               <div className="relative">
@@ -678,7 +746,7 @@ function AppointmentDetailsModal({ open, appointment, onClose, onUpdateStatus, i
             <a 
               href={`/dashboard/conversations?id=${appointment.conversationId}`}
               target="_blank"
-              className="flex-1 py-2.5 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+              className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-800 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
             >
               <ExternalLink size={14} />
               {t('appt.open_conv')}
@@ -702,7 +770,7 @@ export default function AppointmentsPage() {
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
-  const [view, setView]                 = useState("today")
+  const [view, setView]                 = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [processingId, setProcessingId] = useState(null)
   const [deleteModal, setDeleteModal]   = useState({ open: false, id: null, name: "" })
@@ -737,14 +805,20 @@ export default function AppointmentsPage() {
         const todayStr = toLocalDateStr(today)
         params.from = todayStr
         params.to   = todayStr
-      } else {
+      } else if (view === "week") {
         const startOfWeek = new Date(today)
         startOfWeek.setDate(today.getDate() - today.getDay())
         const endOfWeek = new Date(startOfWeek)
         endOfWeek.setDate(startOfWeek.getDate() + 6)
         params.from = toLocalDateStr(startOfWeek)
         params.to   = toLocalDateStr(endOfWeek)
+      } else if (view === "month") {
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+        params.from = toLocalDateStr(startOfMonth)
+        params.to   = toLocalDateStr(endOfMonth)
       }
+      // view === "all" → no date filter, fetch everything
 
       const response = await appointmentsAPI.getAll(params)
       setAppointments(response.data || [])
@@ -876,16 +950,12 @@ export default function AppointmentsPage() {
   const filteredAppointments = useMemo(() => {
     let list = [...appointments]
 
-    if (view === "today") {
-      list = list.filter(a => isToday(a.date))
-    }
-
     if (statusFilter !== "all") {
       list = list.filter(a => a.status === statusFilter)
     }
 
     return list.sort((a, b) => new Date(a.date) - new Date(b.date))
-  }, [appointments, view, statusFilter])
+  }, [appointments, statusFilter])
 
   const statusButtons = [
     { key: "all",       label: t('appt.filter_all'),           icon: CalendarRange, count: appointments.length },
@@ -902,15 +972,15 @@ export default function AppointmentsPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4" dir={dir}>
-        <div className="w-12 h-12 rounded-full border border-red-200 bg-red-50 flex items-center justify-center">
-          <AlertCircle size={20} className="text-red-500" />
+        <div className="w-12 h-12 rounded-full border border-brand-600/20 bg-brand-600/5 flex items-center justify-center">
+          <AlertCircle size={20} className="text-brand-600" />
         </div>
         <div className="text-center">
           <p className="text-[15px] font-semibold text-foreground">{t('appt.load_error')}</p>
           <p className="text-sm text-muted-foreground mt-1">{error}</p>
         </div>
         <button onClick={fetchAppointments}
-          className="flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-800 transition-colors">
+          className="flex items-center gap-2 text-sm font-semibold text-brand-600 hover:text-brand-800 transition-colors">
           <RefreshCw size={15} /> {t('common.retry')}
         </button>
       </div>
@@ -968,10 +1038,12 @@ export default function AppointmentsPage() {
       </div>
 
       {/* ── View Tabs ── */}
-      <div className="flex gap-1 p-1 bg-secondary/50 border border-border rounded-2xl w-fit">
+      <div className="flex gap-1 p-1 bg-secondary/50 border border-border rounded-2xl w-fit overflow-x-auto">
         {[
+          { key: "all",   label: t('appt.view_all')   || "الكل",    icon: CalendarRange },
           { key: "today", label: t('appt.view_today'), icon: CalendarDays  },
           { key: "week",  label: t('appt.view_week'),  icon: CalendarRange },
+          { key: "month", label: t('appt.view_month') || "الشهر",   icon: Calendar },
         ].map(tab => (
           <button
             key={tab.key}
@@ -1014,8 +1086,8 @@ export default function AppointmentsPage() {
         ))}
       </div>
 
-      {/* ── Timeline View ── */}
-      {view === "today" && (
+      {/* ── Cards View (all / today / month) ── */}
+      {(view === "all" || view === "today" || view === "month") && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {filteredAppointments.length === 0 ? (
             <div className="col-span-full bg-card border border-border rounded-xl p-10 text-center">
@@ -1025,7 +1097,7 @@ export default function AppointmentsPage() {
               <p className="text-[14px] text-muted-foreground">
                 {statusFilter !== "all"
                   ? `${t('appt.no_status')} "${getStatusConfig(statusFilter, t).label}"`
-                  : t('appt.no_today')
+                  : t('appt.no_appointments')
                 }
               </p>
             </div>
@@ -1131,19 +1203,10 @@ export default function AppointmentsPage() {
           "flex items-center gap-2.5 px-5 py-3 rounded-2xl",
           "text-sm font-medium shadow-xl border",
           "animate-slideUp whitespace-nowrap",
-          toast.type === "success" &&
-            "bg-brand-600 text-white border-brand-400",
-          toast.type === "error" &&
-            "bg-red-600 text-white border-red-500",
-          toast.type === "info" &&
-            "bg-amber-500 text-white border-amber-400",
-          toast.type === "warning" &&
-            "bg-red-500 text-white border-red-400",
+          toast.type === "error"
+            ? "bg-card text-foreground border-border"
+            : "bg-brand-600 text-white border-brand-400",
         )}>
-          {toast.type === "success" && "✅"}
-          {toast.type === "error"   && "❌"}
-          {toast.type === "info"    && "🔔"}
-          {toast.type === "warning" && "⚠️"}
           {toast.message}
         </div>
       )}

@@ -261,14 +261,25 @@ function ServiceCard({ service, onDetails, onEdit, onToggle, onDelete, delay = 0
   })()
   const mainImage = images[0] || null
 
-  const formatDuration = (minutes) => {
-    if (minutes >= 60) {
-      const hours = Math.floor(minutes / 60)
-      const mins = minutes % 60
+  const dUnit = service.durationUnit || "minutes"
+  const formatDuration = (val) => {
+    if (dUnit === "months") return `${val} ${t('services.unit_months')}`
+    if (dUnit === "weeks") return `${val} ${t('services.unit_weeks')}`
+    if (dUnit === "days") return `${val} ${t('services.unit_days')}`
+    if (dUnit === "hours") return `${val}h`
+    if (val >= 60) {
+      const hours = Math.floor(val / 60)
+      const mins = val % 60
       return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
     }
-    return `${minutes}m`
+    return `${val}m`
   }
+
+  const categoryKey = service.category ? `services.cat_${service.category}` : null
+
+  const priceDisplay = service.priceMax
+    ? `${formatAmount(service.price)} - ${formatAmount(service.priceMax)}`
+    : formatAmount(service.price)
 
   return (
     <div
@@ -298,7 +309,12 @@ function ServiceCard({ service, onDetails, onEdit, onToggle, onDelete, delay = 0
         )}>
           {service.isActive ? "نشط" : "معطل"}
         </span>
-        {images.length > 1 && (
+        {categoryKey && (
+          <span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-black/50 text-white border border-white/10">
+            {t(categoryKey)}
+          </span>
+        )}
+        {!categoryKey && images.length > 1 && (
           <span className="absolute top-2 left-2 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-black/50 text-white border border-white/10">
             {images.length}
           </span>
@@ -309,7 +325,7 @@ function ServiceCard({ service, onDetails, onEdit, onToggle, onDelete, delay = 0
       </div>
       <div className="p-3">
         <p className="text-[14px] font-bold text-foreground truncate mb-0.5">{service.name}</p>
-        <p className="text-[15px] font-bold text-brand-600 mb-2 tabular-nums">{formatAmount(service.price)}</p>
+        <p className="text-[15px] font-bold text-brand-600 mb-2 tabular-nums">{priceDisplay}</p>
         {service.description && (
           <p className="hidden sm:block text-[13px] text-muted-foreground line-clamp-2 mb-2.5 leading-relaxed">
             {service.description}
@@ -347,28 +363,49 @@ function DetailsContent({ service, onClose, onEdit, onLightbox }) {
     catch { return [] }
   })()
 
-  const formatDuration = (minutes) => {
-    if (minutes >= 60) {
-      const hours = Math.floor(minutes / 60)
-      const mins = minutes % 60
+  const dUnit = service.durationUnit || "minutes"
+  const formatDuration = (val) => {
+    if (dUnit === "months") return `${val} ${t('services.unit_months')}`
+    if (dUnit === "weeks") return `${val} ${t('services.unit_weeks')}`
+    if (dUnit === "days") return `${val} ${t('services.unit_days')}`
+    if (dUnit === "hours") return `${val} ${t('services.unit_hours')}`
+    if (val >= 60) {
+      const hours = Math.floor(val / 60)
+      const mins = val % 60
       return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
     }
-    return `${minutes} ${t('services.minutes')}`
+    return `${val} ${t('services.minutes')}`
   }
+
+  const features = (() => {
+    try { return service.features ? JSON.parse(service.features) : [] }
+    catch { return [] }
+  })()
+
+  const categoryKey = service.category ? `services.cat_${service.category}` : null
+
+  const priceDisplay = service.priceMax
+    ? `${formatAmount(service.price)} - ${formatAmount(service.priceMax)}`
+    : formatAmount(service.price)
 
   return (
     <div className="flex flex-col gap-4">
       <div>
         <h2 className="text-xl font-bold text-foreground mb-1">{service.name}</h2>
-        <p className="text-3xl font-bold text-brand-600 tabular-nums">{formatAmount(service.price)}</p>
+        <p className="text-3xl font-bold text-brand-600 tabular-nums">{priceDisplay}</p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className={cn(
           "text-[12px] font-semibold px-2 py-1 rounded-md border",
           service.isActive ? "text-brand-600 bg-secondary border-brand-200" : "text-muted-foreground bg-secondary border-border"
         )}>
           {service.isActive ? t('services.active') : t('services.inactive')}
         </span>
+        {categoryKey && (
+          <span className="text-[12px] font-semibold px-2 py-1 rounded-md border border-border bg-secondary text-foreground">
+            {t(categoryKey)}
+          </span>
+        )}
         <div className="flex items-center gap-1 text-[13px] text-brand-600 bg-brand-50 border border-brand-200 px-2 py-1 rounded-md">
           <Clock size={13} />
           <span>{formatDuration(service.duration)}</span>
@@ -382,6 +419,18 @@ function DetailsContent({ service, onClose, onEdit, onLightbox }) {
         <div className="pb-4 border-b border-border">
           <p className="text-[13px] font-semibold text-muted-foreground mb-1.5">{t('common.description')}</p>
           <p className="text-[14px] text-foreground whitespace-pre-wrap leading-relaxed">{service.description}</p>
+        </div>
+      )}
+      {features.length > 0 && (
+        <div className="pb-4 border-b border-border">
+          <p className="text-[13px] font-semibold text-muted-foreground mb-2">{t('services.features')}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {features.map((f, i) => (
+              <span key={i} className="text-[12px] bg-secondary border border-border text-foreground px-2 py-1 rounded-lg">
+                {f}
+              </span>
+            ))}
+          </div>
         </div>
       )}
       {images.length > 0 && (
@@ -426,11 +475,13 @@ export default function ServicesPage() {
   const [error, setError] = useState(null)
   const [search, setSearch] = useState("")
   const [showAddForm, setShowAddForm] = useState(false)
-  const [newService, setNewService] = useState({ name: "", price: "", description: "", duration: "60", images: [] })
+  const [newService, setNewService] = useState({ name: "", price: "", priceMax: "", description: "", duration: "60", durationUnit: "minutes", category: "", features: [], images: [] })
+  const [newFeatureText, setNewFeatureText] = useState("")
   const [uploadingImages, setUploadingImages] = useState(false)
   const [addingService, setAddingService] = useState(false)
   const [editingService, setEditingService] = useState(null)
-  const [editForm, setEditForm] = useState({ name: "", price: "", description: "", duration: "60", images: [] })
+  const [editForm, setEditForm] = useState({ name: "", price: "", priceMax: "", description: "", duration: "60", durationUnit: "minutes", category: "", features: [], images: [] })
+  const [editFeatureText, setEditFeatureText] = useState("")
   const [savingEdit, setSavingEdit] = useState(false)
   const [editUploading, setEditUploading] = useState(false)
   const [detailsService, setDetailsService] = useState(null)
@@ -490,11 +541,16 @@ export default function ServicesPage() {
       setAddingService(true)
       const res = await servicesAPI.create({
         name: newService.name, price: Number(newService.price),
+        priceMax: newService.priceMax ? Number(newService.priceMax) : null,
         description: newService.description, duration: Number(newService.duration) || 60,
+        durationUnit: newService.durationUnit || "minutes",
+        category: newService.category || null,
+        features: newService.features,
         images: newService.images,
       })
       setServices([...services, res.data])
-      setNewService({ name: "", price: "", description: "", duration: "60", images: [] })
+      setNewService({ name: "", price: "", priceMax: "", description: "", duration: "60", durationUnit: "minutes", category: "", features: [], images: [] })
+      setNewFeatureText("")
       setShowAddForm(false)
     } catch {} finally { setAddingService(false) }
   }
@@ -520,10 +576,15 @@ export default function ServicesPage() {
     setEditingService(service)
     setEditForm({
       name: service.name, price: service.price.toString(),
+      priceMax: service.priceMax?.toString() || "",
       description: service.description || "",
       duration: service.duration?.toString() || "60",
+      durationUnit: service.durationUnit || "minutes",
+      category: service.category || "",
+      features: service.features ? JSON.parse(service.features) : [],
       images: service.images ? JSON.parse(service.images) : [],
     })
+    setEditFeatureText("")
   }
 
   const handleSaveEdit = async () => {
@@ -532,11 +593,15 @@ export default function ServicesPage() {
       setSavingEdit(true)
       await servicesAPI.update(editingService.id, {
         name: editForm.name, price: Number(editForm.price),
+        priceMax: editForm.priceMax ? Number(editForm.priceMax) : null,
         description: editForm.description, duration: Number(editForm.duration) || 60,
+        durationUnit: editForm.durationUnit || "minutes",
+        category: editForm.category || null,
+        features: editForm.features,
         images: editForm.images,
       })
       setServices(services.map((s) => s.id === editingService.id
-        ? { ...s, name: editForm.name, price: Number(editForm.price), description: editForm.description, duration: Number(editForm.duration) || 60, images: JSON.stringify(editForm.images) }
+        ? { ...s, name: editForm.name, price: Number(editForm.price), priceMax: editForm.priceMax ? Number(editForm.priceMax) : null, description: editForm.description, duration: Number(editForm.duration) || 60, durationUnit: editForm.durationUnit || "minutes", category: editForm.category || null, features: JSON.stringify(editForm.features), images: JSON.stringify(editForm.images) }
         : s
       ))
       setEditingService(null)
@@ -608,22 +673,88 @@ export default function ServicesPage() {
               <X size={17} />
             </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+          {/* Row 1: Name + Category */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <FormField label={t('services.name')}>
               <input type="text" value={newService.name} onChange={e => setNewService({ ...newService, name: e.target.value })} placeholder={t('services.name')} className={inputCls} />
             </FormField>
-            <FormField label={t('services.price')}>
+            <FormField label={t('services.category')}>
+              <div className="relative">
+                <select value={newService.category} onChange={e => setNewService({ ...newService, category: e.target.value })} className={cn(inputCls, "appearance-none cursor-pointer")}>
+                  <option value="">{t('services.category_placeholder')}</option>
+                  <option value="web">{t('services.cat_web')}</option>
+                  <option value="design">{t('services.cat_design')}</option>
+                  <option value="marketing">{t('services.cat_marketing')}</option>
+                  <option value="consulting">{t('services.cat_consulting')}</option>
+                  <option value="training">{t('services.cat_training')}</option>
+                  <option value="beauty">{t('services.cat_beauty')}</option>
+                  <option value="health">{t('services.cat_health')}</option>
+                  <option value="repair">{t('services.cat_repair')}</option>
+                  <option value="other">{t('services.cat_other')}</option>
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+            </FormField>
+          </div>
+          {/* Row 2: Price + PriceMax + Duration + Unit */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <FormField label={t('services.price_from')}>
               <input type="number" value={newService.price} onChange={e => setNewService({ ...newService, price: e.target.value })} placeholder="300" className={inputCls} />
+            </FormField>
+            <FormField label={t('services.price_to')}>
+              <input type="number" value={newService.priceMax} onChange={e => setNewService({ ...newService, priceMax: e.target.value })} placeholder="—" className={inputCls} />
             </FormField>
             <FormField label={t('services.duration')}>
               <input type="number" value={newService.duration} onChange={e => setNewService({ ...newService, duration: e.target.value })} placeholder="60" className={inputCls} />
             </FormField>
+            <FormField label={t('services.duration_unit')}>
+              <div className="relative">
+                <select value={newService.durationUnit} onChange={e => setNewService({ ...newService, durationUnit: e.target.value })} className={cn(inputCls, "appearance-none cursor-pointer")}>
+                  <option value="minutes">{t('services.unit_minutes')}</option>
+                  <option value="hours">{t('services.unit_hours')}</option>
+                  <option value="days">{t('services.unit_days')}</option>
+                  <option value="weeks">{t('services.unit_weeks')}</option>
+                  <option value="months">{t('services.unit_months')}</option>
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+            </FormField>
           </div>
+          {/* Description */}
           <div className="mb-3">
             <FormField label={t('services.description')}>
               <textarea value={newService.description} onChange={e => setNewService({ ...newService, description: e.target.value })} placeholder={t('services.description')} rows={2} className={cn(inputCls, "resize-none")} />
             </FormField>
           </div>
+          {/* Features */}
+          <div className="mb-3">
+            <FormField label={t('services.features')}>
+              <div className="flex gap-2 mb-2">
+                <input type="text" value={newFeatureText} onChange={e => setNewFeatureText(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && newFeatureText.trim()) { e.preventDefault(); setNewService(s => ({ ...s, features: [...s.features, newFeatureText.trim()] })); setNewFeatureText("") } }}
+                  placeholder={t('services.features_placeholder')} className={cn(inputCls, "flex-1")} />
+                <button type="button" onClick={() => { if (newFeatureText.trim()) { setNewService(s => ({ ...s, features: [...s.features, newFeatureText.trim()] })); setNewFeatureText("") } }}
+                  className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-[12px] font-semibold hover:bg-brand-800 transition-colors shrink-0">
+                  {t('services.add_feature')}
+                </button>
+              </div>
+              {newService.features.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {newService.features.map((f, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 bg-secondary border border-border text-foreground text-[12px] px-2 py-1 rounded-lg">
+                      {f}
+                      <button onClick={() => setNewService(s => ({ ...s, features: s.features.filter((_, idx) => idx !== i) }))} className="text-muted-foreground hover:text-red-500 transition-colors">
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">{t('services.no_features')}</p>
+              )}
+            </FormField>
+          </div>
+          {/* Images */}
           <div className="mb-4">
             <ImageUploadZone
               images={newService.images} uploading={uploadingImages}
@@ -654,22 +785,88 @@ export default function ServicesPage() {
               <X size={17} />
             </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+          {/* Row 1: Name + Category */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <FormField label={t('services.name')}>
               <input type="text" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} placeholder={t('services.name')} className={inputCls} />
             </FormField>
-            <FormField label={t('services.price')}>
+            <FormField label={t('services.category')}>
+              <div className="relative">
+                <select value={editForm.category} onChange={e => setEditForm({ ...editForm, category: e.target.value })} className={cn(inputCls, "appearance-none cursor-pointer")}>
+                  <option value="">{t('services.category_placeholder')}</option>
+                  <option value="web">{t('services.cat_web')}</option>
+                  <option value="design">{t('services.cat_design')}</option>
+                  <option value="marketing">{t('services.cat_marketing')}</option>
+                  <option value="consulting">{t('services.cat_consulting')}</option>
+                  <option value="training">{t('services.cat_training')}</option>
+                  <option value="beauty">{t('services.cat_beauty')}</option>
+                  <option value="health">{t('services.cat_health')}</option>
+                  <option value="repair">{t('services.cat_repair')}</option>
+                  <option value="other">{t('services.cat_other')}</option>
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+            </FormField>
+          </div>
+          {/* Row 2: Price + PriceMax + Duration + Unit */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+            <FormField label={t('services.price_from')}>
               <input type="number" value={editForm.price} onChange={e => setEditForm({ ...editForm, price: e.target.value })} placeholder="300" className={inputCls} />
+            </FormField>
+            <FormField label={t('services.price_to')}>
+              <input type="number" value={editForm.priceMax} onChange={e => setEditForm({ ...editForm, priceMax: e.target.value })} placeholder="—" className={inputCls} />
             </FormField>
             <FormField label={t('services.duration')}>
               <input type="number" value={editForm.duration} onChange={e => setEditForm({ ...editForm, duration: e.target.value })} placeholder="60" className={inputCls} />
             </FormField>
+            <FormField label={t('services.duration_unit')}>
+              <div className="relative">
+                <select value={editForm.durationUnit} onChange={e => setEditForm({ ...editForm, durationUnit: e.target.value })} className={cn(inputCls, "appearance-none cursor-pointer")}>
+                  <option value="minutes">{t('services.unit_minutes')}</option>
+                  <option value="hours">{t('services.unit_hours')}</option>
+                  <option value="days">{t('services.unit_days')}</option>
+                  <option value="weeks">{t('services.unit_weeks')}</option>
+                  <option value="months">{t('services.unit_months')}</option>
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+            </FormField>
           </div>
+          {/* Description */}
           <div className="mb-3">
             <FormField label={t('services.description')}>
               <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} placeholder={t('services.description')} rows={2} className={cn(inputCls, "resize-none")} />
             </FormField>
           </div>
+          {/* Features */}
+          <div className="mb-3">
+            <FormField label={t('services.features')}>
+              <div className="flex gap-2 mb-2">
+                <input type="text" value={editFeatureText} onChange={e => setEditFeatureText(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && editFeatureText.trim()) { e.preventDefault(); setEditForm(f => ({ ...f, features: [...f.features, editFeatureText.trim()] })); setEditFeatureText("") } }}
+                  placeholder={t('services.features_placeholder')} className={cn(inputCls, "flex-1")} />
+                <button type="button" onClick={() => { if (editFeatureText.trim()) { setEditForm(f => ({ ...f, features: [...f.features, editFeatureText.trim()] })); setEditFeatureText("") } }}
+                  className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-[12px] font-semibold hover:bg-brand-800 transition-colors shrink-0">
+                  {t('services.add_feature')}
+                </button>
+              </div>
+              {editForm.features.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {editForm.features.map((f, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 bg-secondary border border-border text-foreground text-[12px] px-2 py-1 rounded-lg">
+                      {f}
+                      <button onClick={() => setEditForm(s => ({ ...s, features: s.features.filter((_, idx) => idx !== i) }))} className="text-muted-foreground hover:text-red-500 transition-colors">
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">{t('services.no_features')}</p>
+              )}
+            </FormField>
+          </div>
+          {/* Images */}
           <div className="mb-4">
             <ImageUploadZone
               images={editForm.images} uploading={editUploading}

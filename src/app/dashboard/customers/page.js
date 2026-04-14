@@ -251,7 +251,6 @@ export default function CustomersPage() {
   async function fetchConversations() {
     try {
       const convData = await conversationsAPI.getAll()
-      console.log("💬 Conversations fetched:", convData.data?.conversations?.length, convData.data?.conversations?.[0])
       setConversations(convData.data?.conversations || [])
     } catch (err) {
       console.error("Failed to fetch conversations:", err)
@@ -262,27 +261,19 @@ export default function CustomersPage() {
   const customersWithType = useMemo(() => {
     // Ensure conversations is always an array FIRST
     const convArray = Array.isArray(conversations) ? conversations : []
-    console.log("👥 Debugging - customers:", customers.map(c => ({ id: c.id, name: c.name, phone: c.phone, userId: c.userId })))
-    console.log("👥 Debugging - conversations:", convArray.map(c => ({ id: c.id, customerPhone: c.customerPhone, customerId: c.customerId, userId: c.userId, type: c.type })))
     return customers.map(c => {
       // Find conversation for this customer (by phone or userId)
       const conv = convArray.find(conv => {
         const matchPhone = conv.customer?.phone === c.phone
         const matchCustomerId = conv.customerId === c.id
         const matchUserId = conv.userId === c.userId
-        const isMatch = matchPhone || matchCustomerId || matchUserId
-        if (isMatch) {
-          console.log(`✅ Match found: Customer ${c.name} (${c.phone}) -> Conversation ${conv.id}, type: ${conv.type}`)
-        }
-        return isMatch
+        return matchPhone || matchCustomerId || matchUserId
       })
-      const result = {
+      return {
         ...c,
         type: c.type || conv?.type || null,
         conversationType: c.conversationType || conv?.type || null,
       }
-      console.log(`📝 Customer ${c.name}: type=${result.type}, conversationType=${result.conversationType}`)
-      return result
     })
   }, [customers, conversations])
 
@@ -299,8 +290,6 @@ export default function CustomersPage() {
       setCustomers(customersData.data || [])
       setStats(statsData.data)
       await fetchConversations() // Fetch conversations after customers
-      console.log("📊 Customer sample:", customersData.data?.[0])
-      console.log("🔍 All customers:", customersData.data?.map(c => ({ id: c.id, name: c.name, type: c.type, conversationType: c.conversationType })))
     } catch {
       setError("customers.loading_error")
     } finally {
@@ -370,8 +359,8 @@ export default function CustomersPage() {
   /* ── Error ── */
   if (error) return (
     <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
-      <div className="w-12 h-12 rounded-full border border-red-200 bg-red-50 flex items-center justify-center">
-        <AlertCircle size={22} className="text-red-500" />
+      <div className="w-12 h-12 rounded-full border border-brand-600/20 bg-brand-600/5 flex items-center justify-center">
+        <AlertCircle size={22} className="text-brand-600" />
       </div>
       <div className="text-center">
         <p className="text-sm font-semibold text-foreground">{t('common.load_error')}</p>
@@ -413,8 +402,8 @@ export default function CustomersPage() {
         <div className="flex gap-1 p-1 bg-secondary/50 border border-border/60 rounded-xl w-fit">
           {[
             { key: "all",     label: t('common.all'),                count: customers.length },
-            { key: "product", label: `🛍️ ${t('nav.products')}`,  count: productCustomersCount },
-            { key: "service", label: `🔧 ${t('nav.services')}`,  count: serviceCustomersCount },
+            { key: "product", label: t('nav.products'),  count: productCustomersCount },
+            { key: "service", label: t('nav.services'),  count: serviceCustomersCount },
           ].map(t => (
             <button
               key={t.key}
@@ -491,7 +480,7 @@ export default function CustomersPage() {
           {/* ── Mobile Cards ── */}
           <div className="flex flex-col gap-2 md:hidden">
             {filtered.map((customer, idx) => {
-              const tagConfig = getCustomerTagConfig(customer.tag)
+              const tagConfig = getCustomerTagConfig(customer.tag, t)
               return (
                 <MobileCustomerCard key={customer.id} customer={customer} tagConfig={tagConfig} delay={idx * 40} onDelete={() => setDeleteModal({ open: true, customer })} />
               )
@@ -512,7 +501,7 @@ export default function CustomersPage() {
               </thead>
               <tbody>
                 {filtered.map((customer, idx) => {
-                  const tagConfig = getCustomerTagConfig(customer.tag)
+                  const tagConfig = getCustomerTagConfig(customer.tag, t)
                   return (
                     <DesktopCustomerRow key={customer.id} customer={customer} tagConfig={tagConfig} delay={idx * 30} onDelete={() => setDeleteModal({ open: true, customer })} />
                   )
@@ -534,8 +523,11 @@ export default function CustomersPage() {
               <Trash2 size={22} className="text-red-500" />
             </div>
             <h3 className="text-[16px] font-bold text-foreground text-center mb-1">{t('admin.confirm_delete_title')}</h3>
+            <p className="text-[13px] text-muted-foreground text-center mb-1">
+              {t('admin.confirm_delete_subtitle')}
+            </p>
             <p className="text-[13px] text-muted-foreground text-center mb-5">
-              {deleteModal.customer?.name}
+              {t('admin.confirm_delete_body')} <span className="text-brand-600 font-semibold">{deleteModal.customer?.name}</span>{t('admin.confirm_delete_final')}
             </p>
             <div className="flex gap-2">
               <button
@@ -584,7 +576,7 @@ function MobileCustomerCard({ customer, tagConfig, delay, onDelete }) {
         <div className="flex items-center justify-between gap-2 mb-0.5">
           <p className="text-[14px] font-bold text-foreground truncate">{customer.name}</p>
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded-md border", tagConfig.className)}>
+            <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-md border bg-brand-600/10 text-brand-600 border-brand-600/20">
               {tagConfig.label}
             </span>
             <button onClick={e => { e.stopPropagation(); onDelete() }} className="p-1 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
@@ -599,7 +591,7 @@ function MobileCustomerCard({ customer, tagConfig, delay, onDelete }) {
             <span className="text-[12px] font-bold text-brand-600 tabular-nums">{formatAmount(customer.totalSpent)}</span>
           )}
           <span className="text-[12px] text-muted-foreground mr-auto">
-            {customer.lastSeen ? timeAgo(customer.lastSeen) : "—"}
+            {customer.lastSeen ? timeAgo(customer.lastSeen, t) : "—"}
           </span>
         </div>
       </div>
@@ -639,11 +631,11 @@ function DesktopCustomerRow({ customer, tagConfig, delay, onDelete }) {
         </span>
       </td>
       <td className="px-4 py-3.5 text-[13px] text-muted-foreground">
-        {customer.lastSeen ? timeAgo(customer.lastSeen) : "—"}
+        {customer.lastSeen ? timeAgo(customer.lastSeen, t) : "—"}
       </td>
       <td className="px-4 py-3.5">
         <div className="flex items-center gap-2">
-          <span className={cn("text-[12px] font-semibold px-2 py-0.5 rounded-md border", tagConfig.className)}>
+          <span className="text-[12px] font-semibold px-2 py-0.5 rounded-md border bg-brand-600/10 text-brand-600 border-brand-600/20">
             {tagConfig.label}
           </span>
           <button onClick={e => { e.stopPropagation(); onDelete() }} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-150">

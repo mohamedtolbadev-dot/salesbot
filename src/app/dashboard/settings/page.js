@@ -111,7 +111,7 @@ function AnimatedButton({ children, onClick, disabled, variant = "primary", clas
   const variants = {
     primary: "bg-brand-600 text-white shadow-lg shadow-brand-600/25 hover:shadow-brand-600/40",
     secondary: "bg-secondary border border-border hover:border-brand-600/30 hover:bg-secondary/80",
-    danger: "bg-red-500/10 border border-red-500/20 text-red-600 hover:bg-red-500/20",
+    danger: "bg-brand-600/10 border border-brand-600/20 text-brand-600 hover:bg-brand-600/20",
   }
   
   return (
@@ -534,8 +534,8 @@ function AccountTabSk() {
       </SectionShell>
 
       {/* Danger zone */}
-      <div className="rounded-2xl border border-red-500/20 overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-red-500/20 bg-red-500/5">
+      <div className="rounded-2xl border border-border overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-border bg-secondary/30">
           <Sk w={90} h={10} />
         </div>
         <div className="px-4 py-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -680,6 +680,9 @@ export default function SettingsPage() {
   const [workEnd, setWorkEnd] = useState("18:00")
   const [offlineMessage, setOfflineMessage] = useState("")
   const [welcomeMessage, setWelcomeMessage] = useState("")
+  const [serviceWelcomeMessage, setServiceWelcomeMessage] = useState("")
+  const [outboundEnabled, setOutboundEnabled] = useState(false)
+  const [outboundTemplate, setOutboundTemplate] = useState("")
   const [appointmentConfirmMessage, setAppointmentConfirmMessage] = useState("")
   const [appointmentReminderMessage, setAppointmentReminderMessage] = useState("")
   const [appointmentCancellationMessage, setAppointmentCancellationMessage] = useState("")
@@ -776,6 +779,7 @@ export default function SettingsPage() {
       setWorkEnd(agent.workEnd || "18:00")
       setOfflineMessage(agent.offlineMessage || "")
       setWelcomeMessage(agent.welcomeMessage || "")
+      setServiceWelcomeMessage(agent.serviceWelcomeMessage || "")
       setAppointmentConfirmMessage(agent.appointmentConfirmMessage || "")
       setAppointmentReminderMessage(agent.appointmentReminderMessage || "")
       setAppointmentCancellationMessage(agent.appointmentCancellationMessage || "")
@@ -784,6 +788,8 @@ export default function SettingsPage() {
       setOrderDeliverMessage(agent.orderDeliverMessage || "")
       setOrderCancelledMessage(agent.orderCancelledMessage || "")
       setTrackingUrlTemplate(agent.trackingUrlTemplate || "")
+      setOutboundEnabled(agent.outboundEnabled || false)
+      setOutboundTemplate(agent.outboundTemplate || "")
       setWhatsappForm({ whatsappPhoneId: agent.whatsappPhoneId || "", whatsappToken: agent.whatsappToken || "" })
     }
   }, [agent])
@@ -795,10 +801,13 @@ export default function SettingsPage() {
         ...localAgent,
         workHoursEnabled, workStart, workEnd, offlineMessage,
         welcomeMessage: welcomeMessage?.trim() || null,
+        serviceWelcomeMessage: serviceWelcomeMessage?.trim() || null,
         appointmentConfirmMessage, appointmentReminderMessage,
         appointmentCancellationMessage,
         orderConfirmMessage, orderShipMessage, orderDeliverMessage, orderCancelledMessage,
         trackingUrlTemplate,
+        outboundEnabled,
+        outboundTemplate: outboundTemplate?.trim() || null,
       })
       showToast(t('settings.toast_saved'))
     } catch (err) { console.error(err) } finally { setSaving(false) }
@@ -847,9 +856,17 @@ export default function SettingsPage() {
       return
     }
     try {
+      const token = getToken()
+      if (!token) {
+        showToast(t('settings.toast_session_expired'), "error")
+        return
+      }
       const response = await fetch('/api/whatsapp/test-connection', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           phoneId: whatsappForm.whatsappPhoneId,
           token: whatsappForm.whatsappToken
@@ -952,10 +969,10 @@ export default function SettingsPage() {
         <div className="flex items-center gap-2.5 bg-secondary/60 border border-border rounded-2xl px-3 py-2 shrink-0">
           <div className={cn(
             "w-1.5 h-1.5 rounded-full transition-all",
-            isActive ? "bg-green-500 shadow-sm shadow-green-500/60 animate-pulse" : "bg-border"
+            isActive ? "bg-brand-600 shadow-sm shadow-brand-600/60 animate-pulse" : "bg-border"
           )} />
           <span className="text-sm text-muted-foreground hidden sm:inline">Agent</span>
-          <span className={cn("text-sm font-semibold", isActive ? "text-green-600" : "text-muted-foreground")}>
+          <span className={cn("text-sm font-semibold", isActive ? "text-brand-600" : "text-muted-foreground")}>
             {isActive ? t('settings.agent_active') : t('settings.agent_inactive')}
           </span>
           <button
@@ -975,17 +992,17 @@ export default function SettingsPage() {
 
       {/* Manual Mode Banner */}
       {!isActive && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-          <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-brand-600/5 border border-brand-600/15">
+          <div className="w-2 h-2 rounded-full bg-brand-600/60 animate-pulse shrink-0" />
           <div className="flex-1">
-            <p className="text-sm font-semibold text-amber-700">
-              وضع التحدث المباشر مفعّل
+            <p className="text-sm font-semibold text-foreground">
+              {t('settings.manual_mode_title') || 'وضع التحدث المباشر مفعّل'}
             </p>
-            <p className="text-[12px] text-amber-600/80 mt-0.5">
-              الـ AI متوقف — ردودك تصل مباشرة للزبائن عبر واتساب
+            <p className="text-[12px] text-muted-foreground mt-0.5">
+              {t('settings.manual_mode_sub') || 'الـ AI متوقف — ردودك تصل مباشرة للزبائن عبر واتساب'}
             </p>
           </div>
-          <MessageCircle size={16} className="text-amber-500 shrink-0" />
+          <MessageCircle size={16} className="text-brand-600/50 shrink-0" />
         </div>
       )}
 
@@ -1182,29 +1199,54 @@ export default function SettingsPage() {
                 </div>
               </Field>
 
-              {/* رسالة الترحيب المخصصة */}
-              <Field label={t('settings.welcome_msg') || "رسالة الترحيب"} icon={MessageCircle}
-                hint={t('settings.welcome_msg_hint') || "يُستخدم {name} لاسم الزبون — تُرسل كأول رد فقط، ثم يتولى AI الباقي"}>
-                <div className="relative">
-                  <textarea value={welcomeMessage} rows={3}
-                    onChange={(e) => setWelcomeMessage(e.target.value)}
-                    placeholder={t('settings.welcome_msg_placeholder') || "مرحبا {name} 👋 أنا مساعد المتجر، كيف نقدر نعاونك اليوم؟"}
-                    className={cn(textareaCls, "pr-10")} />
-                  <button
-                    onClick={() => { setModalConfig({
-                      title: t('settings.welcome_msg') || "رسالة الترحيب",
-                      value: welcomeMessage,
-                      placeholder: t('settings.welcome_msg_placeholder') || "مرحبا {name} 👋 أنا مساعد المتجر، كيف نقدر نعاونك اليوم؟",
-                      hint: t('settings.welcome_msg_hint') || "يُستخدم {name} لاسم الزبون — تُرسل كأول رد فقط، ثم يتولى AI الباقي",
-                      onSave: (val) => setWelcomeMessage(val)
-                    }); setModalOpen(true); }}
-                    className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
-                    title={t('settings.expand')}
-                  >
-                    <Maximize2 size={16} />
-                  </button>
-                </div>
-              </Field>
+              {/* رسالة الترحيب — حسب الوضع */}
+              {mode === "service" ? (
+                <Field label={t('settings.service_welcome_msg') || "رسالة ترحيب الخدمات"} icon={MessageCircle}
+                  hint={t('settings.service_welcome_msg_hint') || "يُستخدم {name} لاسم الزبون — تُرسل كأول رد للعميل في وضع الخدمات"}>
+                  <div className="relative">
+                    <textarea value={serviceWelcomeMessage} rows={3}
+                      onChange={(e) => setServiceWelcomeMessage(e.target.value)}
+                      placeholder={t('settings.service_welcome_msg_placeholder') || "مرحبا {name} 👋 كيفاش نقدر نعاونك اليوم؟"}
+                      className={cn(textareaCls, "pr-10")} />
+                    <button
+                      onClick={() => { setModalConfig({
+                        title: t('settings.service_welcome_msg') || "رسالة ترحيب الخدمات",
+                        value: serviceWelcomeMessage,
+                        placeholder: t('settings.service_welcome_msg_placeholder') || "مرحبا {name} 👋 كيفاش نقدر نعاونك اليوم؟",
+                        hint: t('settings.service_welcome_msg_hint') || "يُستخدم {name} لاسم الزبون — تُرسل كأول رد للعميل في وضع الخدمات",
+                        onSave: (val) => setServiceWelcomeMessage(val)
+                      }); setModalOpen(true); }}
+                      className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
+                      title={t('settings.expand')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </div>
+                </Field>
+              ) : (
+                <Field label={t('settings.welcome_msg') || "رسالة الترحيب"} icon={MessageCircle}
+                  hint={t('settings.welcome_msg_hint') || "يُستخدم {name} لاسم الزبون — تُرسل كأول رد فقط، ثم يتولى AI الباقي"}>
+                  <div className="relative">
+                    <textarea value={welcomeMessage} rows={3}
+                      onChange={(e) => setWelcomeMessage(e.target.value)}
+                      placeholder={t('settings.welcome_msg_placeholder') || "مرحبا {name} 👋 أنا مساعد المتجر، كيف نقدر نعاونك اليوم؟"}
+                      className={cn(textareaCls, "pr-10")} />
+                    <button
+                      onClick={() => { setModalConfig({
+                        title: t('settings.welcome_msg') || "رسالة الترحيب",
+                        value: welcomeMessage,
+                        placeholder: t('settings.welcome_msg_placeholder') || "مرحبا {name} 👋 أنا مساعد المتجر، كيف نقدر نعاونك اليوم؟",
+                        hint: t('settings.welcome_msg_hint') || "يُستخدم {name} لاسم الزبون — تُرسل كأول رد فقط، ثم يتولى AI الباقي",
+                        onSave: (val) => setWelcomeMessage(val)
+                      }); setModalOpen(true); }}
+                      className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
+                      title={t('settings.expand')}
+                    >
+                      <Maximize2 size={16} />
+                    </button>
+                  </div>
+                </Field>
+              )}
 
             </div>
           </Section>
@@ -1396,6 +1438,68 @@ export default function SettingsPage() {
             </Section>
           )}
 
+          {/* ════════════════════════════════════════════════
+              Outbound Sales Settings
+             ════════════════════════════════════════════════ */}
+          <Section title={t('settings.outbound_title') || "إعدادات Outbound Sales 🚀"}>
+            <div className="flex flex-col gap-4">
+              <Toggle
+                on={outboundEnabled}
+                onToggle={() => setOutboundEnabled(!outboundEnabled)}
+                label={t('settings.outbound_enable') || "تفعيل Outbound Sales"}
+                sub={t('settings.outbound_enable_sub') || "السماح بإرسال عروض للزبائن المحتملين"}
+              />
+
+              {outboundEnabled && (
+                <div className="pt-4 border-t border-border/60">
+                  <Field
+                    label={t('settings.outbound_template') || "Template رسالة Outbound"}
+                    icon={MessageCircle}
+                    hint={t('settings.outbound_template_hint') || "المتغيرات: {name}, {product}, {service}, {price}"}
+                  >
+                    <div className="relative">
+                      <textarea
+                        value={outboundTemplate}
+                        onChange={(e) => setOutboundTemplate(e.target.value)}
+                        rows={4}
+                        placeholder={(() => {
+                          const lang = localAgent.language || "darija"
+                          if (lang === "french") {
+                            return "Bonjour {name}! 👋\nNous avons {product} à {price} DH.\nÇa vous intéresse?"
+                          }
+                          return "مرحبا {name}! 👋\nعندنا {product} بـ {price} درهم.\nواش تحب تعرف أكثر؟"
+                        })()}
+                        className={cn(textareaCls, "pr-10")}
+                      />
+                      <button
+                        onClick={() => {
+                          setModalConfig({
+                            title: t('settings.outbound_template') || "Template رسالة Outbound",
+                            value: outboundTemplate,
+                            placeholder: (() => {
+                              const lang = localAgent.language || "darija"
+                              if (lang === "french") {
+                                return "Bonjour {name}! 👋\nNous avons {product} à {price} DH.\nÇa vous intéresse?"
+                              }
+                              return "مرحبا {name}! 👋\nعندنا {product} بـ {price} درهم.\nواش تحب تعرف أكثر؟"
+                            })(),
+                            hint: t('settings.outbound_template_hint') || "المتغيرات: {name}, {product}, {service}, {price}",
+                            onSave: (val) => setOutboundTemplate(val)
+                          })
+                          setModalOpen(true)
+                        }}
+                        className={cn("absolute top-3 text-muted-foreground hover:text-brand-600 transition-colors", isRTL ? "left-3" : "right-3")}
+                        title={t('settings.expand')}
+                      >
+                        <Maximize2 size={16} />
+                      </button>
+                    </div>
+                  </Field>
+                </div>
+              )}
+            </div>
+          </Section>
+
           <button onClick={handleSaveAgent} disabled={saving}
             className="w-full flex items-center gap-2 justify-center bg-brand-600 text-white py-3.5 rounded-xl text-sm font-semibold hover:bg-brand-700 active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-brand-600/25">
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
@@ -1500,7 +1604,7 @@ export default function SettingsPage() {
                         <span className="text-sm font-medium text-foreground">{t('settings.auto_reply')}</span>
                       </div>
                       <button onClick={() => removeObjectionReply(item.id)}
-                        className="w-6 h-6 rounded-lg flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all">
+                        className="w-6 h-6 rounded-lg flex items-center justify-center text-muted-foreground/50 hover:text-red-500 hover:bg-red-500/5 transition-all">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -1560,10 +1664,10 @@ export default function SettingsPage() {
               {/* حالة الاتصال */}
               <div className={cn(
                 "flex items-center gap-3 p-4 rounded-xl border transition-all",
-                isWAConnected ? "bg-green-500/8 border-green-500/20" : "bg-secondary/50 border-border"
+                isWAConnected ? "bg-brand-600/5 border-brand-600/20" : "bg-secondary/50 border-border"
               )}>
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0">
-                  <Phone size={16} className={isWAConnected ? "text-green-600" : "text-muted-foreground"} />
+                  <Phone size={16} className={isWAConnected ? "text-brand-600" : "text-muted-foreground"} />
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-foreground">
@@ -1574,7 +1678,7 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <div className={cn("w-2 h-2 rounded-full shrink-0",
-                  isWAConnected ? "bg-green-500 animate-pulse shadow-sm shadow-green-500/60" : "bg-border")} />
+                  isWAConnected ? "bg-brand-600 animate-pulse shadow-sm shadow-brand-600/60" : "bg-border")} />
               </div>
 
               <p className="text-[12px] text-muted-foreground leading-relaxed">
@@ -1582,29 +1686,29 @@ export default function SettingsPage() {
               </p>
 
               {/* ════ دليل الإعدادات ════════════════════════ */}
-              <div className="p-4 bg-blue-500/8 border border-blue-500/20 rounded-xl">
-                <p className="text-[12px] font-semibold text-blue-700 mb-2 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> {t('settings.wa_guide')}
+              <div className="p-4 bg-brand-600/5 border border-brand-600/15 rounded-xl">
+                <p className="text-[12px] font-semibold text-foreground mb-2 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-600" /> {t('settings.wa_guide')}
                 </p>
                 <div className="flex flex-col gap-2">
                   <a href="https://developers.facebook.com/apps/1869784147010749/whatsapp-business-api/setup" 
                     target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-[12px] text-blue-600 hover:text-blue-700 hover:underline transition-colors">
-                    <span className="w-5 h-5 rounded bg-blue-500/10 flex items-center justify-center text-[12px] font-bold">1</span>
+                    className="flex items-center gap-2 text-[12px] text-brand-600 hover:text-brand-800 hover:underline transition-colors">
+                    <span className="w-5 h-5 rounded bg-brand-600/10 flex items-center justify-center text-[12px] font-bold">1</span>
                     <span>{t('settings.wa_step1')}</span>
                     <span className="text-[11px] opacity-60">{t('settings.wa_new_win')}</span>
                   </a>
                   <a href="https://business.facebook.com/settings/system-users" 
                     target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-[12px] text-blue-600 hover:text-blue-700 hover:underline transition-colors">
-                    <span className="w-5 h-5 rounded bg-blue-500/10 flex items-center justify-center text-[12px] font-bold">2</span>
+                    className="flex items-center gap-2 text-[12px] text-brand-600 hover:text-brand-800 hover:underline transition-colors">
+                    <span className="w-5 h-5 rounded bg-brand-600/10 flex items-center justify-center text-[12px] font-bold">2</span>
                     <span>{t('settings.wa_step2')}</span>
                     <span className="text-[11px] opacity-60">(System User)</span>
                   </a>
                   <a href="https://developers.facebook.com/apps/1869784147010749/whatsapp-business-api/webhooks" 
                     target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-[12px] text-blue-600 hover:text-blue-700 hover:underline transition-colors">
-                    <span className="w-5 h-5 rounded bg-blue-500/10 flex items-center justify-center text-[12px] font-bold">3</span>
+                    className="flex items-center gap-2 text-[12px] text-brand-600 hover:text-brand-800 hover:underline transition-colors">
+                    <span className="w-5 h-5 rounded bg-brand-600/10 flex items-center justify-center text-[12px] font-bold">3</span>
                     <span>{t('settings.wa_step3')}</span>
                     <span className="text-[11px] opacity-60">{t('settings.wa_last_step')}</span>
                   </a>
@@ -1645,8 +1749,8 @@ export default function SettingsPage() {
               </Field>
 
               {!isValidDomain(agent?.domain) && (
-                <div className="p-3 bg-amber-500/8 border border-amber-500/20 rounded-xl">
-                  <p className="text-[11px] text-amber-700">
+                <div className="p-3 bg-brand-600/5 border border-brand-600/15 rounded-xl">
+                  <p className="text-[11px] text-muted-foreground">
                     ℹ️ {t('settings.wa_env_hint')}
                   </p>
                 </div>
@@ -1783,9 +1887,9 @@ export default function SettingsPage() {
           )}
 
           {/* Danger Zone */}
-          <div className="bg-card border border-red-500/15 rounded-2xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-red-500/10 bg-red-500/4">
-              <p className="text-[12px] font-semibold text-red-500/70 tracking-widest uppercase flex items-center gap-1.5">
+          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border bg-secondary/30">
+              <p className="text-[12px] font-semibold text-muted-foreground tracking-widest uppercase flex items-center gap-1.5">
                 <Shield size={13} /> {t('settings.danger_zone')}
               </p>
             </div>
@@ -1795,7 +1899,7 @@ export default function SettingsPage() {
                 <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">{t('settings.delete_account_sub')}</p>
               </div>
               <button onClick={() => setShowDeleteDialog(true)}
-                className="shrink-0 text-sm border border-red-500/20 text-red-500/70 px-3 py-1.5 rounded-xl hover:bg-red-500/10 hover:border-red-500/40 hover:text-red-500 transition-all font-medium">
+                className="shrink-0 text-sm border border-border text-muted-foreground px-3 py-1.5 rounded-xl hover:bg-secondary hover:border-brand-600/30 hover:text-foreground transition-all font-medium">
                 {t('settings.delete_account')}
               </button>
             </div>
@@ -1814,10 +1918,10 @@ export default function SettingsPage() {
                style={{ backgroundColor: 'var(--modal-surface)' }}>
 
             {/* Header */}
-            <div className="px-5 py-4 border-b border-border/50 bg-red-500/5">
+            <div className="px-5 py-4 border-b border-border/50 bg-secondary/30">
               <div className="flex items-center gap-2">
-                <Shield size={16} className="text-red-500" />
-                <p className="text-[15px] font-bold text-red-500">{t('settings.delete_confirm_title')}</p>
+                <Shield size={16} className="text-brand-600" />
+                <p className="text-[15px] font-bold text-foreground">{t('settings.delete_confirm_title')}</p>
               </div>
             </div>
 
@@ -1835,13 +1939,13 @@ export default function SettingsPage() {
                 ].map(item => (
                   <div key={item}
                     className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-600/50 shrink-0" />
                     {item}
                   </div>
                 ))}
               </div>
-              <div className="p-3 bg-red-500/8 border border-red-500/20 rounded-xl">
-                <p className="text-[12px] text-red-600 font-medium">
+              <div className="p-3 bg-brand-600/5 border border-brand-600/15 rounded-xl">
+                <p className="text-[12px] text-muted-foreground font-medium">
                   ⚠️ {t('settings.delete_irreversible')}
                 </p>
               </div>
@@ -1857,7 +1961,7 @@ export default function SettingsPage() {
               <button
                 onClick={handleDeleteAccount}
                 disabled={deleteLoading}
-                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+                className="flex-1 py-2.5 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
                 {deleteLoading
                   ? <Loader2 size={14} className="animate-spin" />
                   : <Trash2 size={14} />
@@ -1876,16 +1980,10 @@ export default function SettingsPage() {
           "flex items-center gap-2.5 px-5 py-3 rounded-2xl",
           "text-sm font-medium shadow-xl border",
           "animate-slideUp whitespace-nowrap",
-          toast.type === "success" &&
-            "bg-green-600 text-white border-green-500",
-          toast.type === "error" &&
-            "bg-red-600 text-white border-red-500",
-          toast.type === "info" &&
-            "bg-brand-600 text-white border-brand-500",
+          toast.type === "error"
+            ? "bg-card text-foreground border-border"
+            : "bg-brand-600 text-white border-brand-400",
         )}>
-          {toast.type === "success" && "✅"}
-          {toast.type === "error"   && "❌"}
-          {toast.type === "info"    && "ℹ️"}
           {toast.message}
         </div>
       )}

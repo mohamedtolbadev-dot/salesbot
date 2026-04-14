@@ -31,42 +31,54 @@ export async function POST(request, { params }) {
     const { id } = resolvedParams || {}
     if (!id) return errorResponse("معرف المحادثة غير صالح", 400)
 
-    const formData = await request.formData()
-    const file = formData.get("file")
-    const mediaType = formData.get("type") // "image" | "document"
-    const caption = formData.get("caption") || ""
+    // Detect request type: JSON (Cloudinary URL) vs FormData (direct file)
+    const contentType = request.headers.get("content-type") || ""
+    const isJsonRequest = contentType.includes("application/json")
 
-    if (!file) return errorResponse("الملف مطلوب", 400)
-    if (!mediaType || !["image", "video", "document"].includes(mediaType)) {
-      return errorResponse("نوع الملف غير صالح (image, video أو document)", 400)
-    }
+    let mediaType, fileName, mediaUrl, file, fileType
 
-    const fileType = file.type || "application/octet-stream"
-    const fileName = file.name || "file"
+    if (isJsonRequest) {
+      // ── PATH A: Large file uploaded to Cloudinary first ──
+      const body = await request.json()
+      mediaUrl = body.mediaUrl
+      mediaType = body.type
+      fileName = body.fileName || "file"
 
-    // Validate file type and size
-    if (mediaType === "image") {
-      if (!IMAGE_TYPES.includes(fileType)) {
-        return errorResponse("صيغة الصورة غير مدعومة (JPG, PNG, WebP فقط)", 400)
+      if (!mediaUrl || !mediaUrl.startsWith("https://")) {
+        return errorResponse("رابط الملف غير صالح", 400)
       }
-      if (file.size > MAX_IMAGE_SIZE) {
-        return errorResponse("حجم الصورة يتجاوز 5MB", 400)
+      if (!mediaType || !["image", "video", "document"].includes(mediaType)) {
+        return errorResponse("نوع الملف غير صالح", 400)
       }
-    } else if (mediaType === "video") {
-      if (!VIDEO_TYPES.includes(fileType)) {
-        return errorResponse("صيغة الفيديو غير مدعومة (MP4, 3GPP فقط)", 400)
-      }
-      if (file.size > MAX_VIDEO_SIZE) {
-        return errorResponse("حجم الفيديو يتجاوز 16MB", 400)
-      }
+      console.log(`📤 Sending ${mediaType} via URL: "${fileName}"`)
     } else {
-      if (file.size > MAX_DOC_SIZE) {
-        return errorResponse("حجم المستند يتجاوز 100MB", 400)
-      }
-    }
+      // ── PATH B: Small file sent directly via FormData ──
+      const formData = await request.formData()
+      file = formData.get("file")
+      mediaType = formData.get("type")
 
-    // Read file buffer first (must be before any other async ops on Vercel)
-    const buffer = Buffer.from(await file.arrayBuffer())
+      if (!file) return errorResponse("الملف مطلوب", 400)
+      if (!mediaType || !["image", "video", "document"].includes(mediaType)) {
+        return errorResponse("نوع الملف غير صالح (image, video أو document)", 400)
+      }
+
+      fileType = file.type || "application/octet-stream"
+      fileName = file.name || "file"
+
+      if (mediaType === "image") {
+        if (!IMAGE_TYPES.includes(fileType)) {
+          return errorResponse("صيغة الصورة غير مدعومة (JPG, PNG, WebP فقط)", 400)
+        }
+        if (file.size > MAX_IMAGE_SIZE) {
+          return errorResponse("حجم الصورة يتجاوز 5MB", 400)
+        }
+      } else if (mediaType === "video") {
+        if (!VIDEO_TYPES.includes(fileType)) {
+          return errorResponse("صيغة الفيديو غير مدعومة (MP4, 3GPP فقط)", 400)
+        }
+      }
+      console.log(`📤 Uploading ${mediaType}: "${fileName}" (${fileType}, ${(file.size / 1024).toFixed(0)} KB)`)
+    }
 
     // Fetch conversation + agent in parallel
     const [conversation, agent] = await Promise.all([
@@ -88,59 +100,66 @@ export async function POST(request, { params }) {
     const normalizedPhone = normalizePhoneForWhatsApp(conversation.customer.phone)
     if (!normalizedPhone) return errorResponse("رقم هاتف العميل غير صالح", 400)
 
-    // Upload file to WhatsApp Media
-    if (!buffer || buffer.length < 100) {
-      return errorResponse("الملف فارغ أو غير صالح", 400)
-    }
-
-    console.log(`📤 Uploading ${mediaType}: "${fileName}" (${fileType}, ${(buffer.length / 1024).toFixed(0)} KB)`)
-
-    const uploadResult = await uploadWhatsAppMedia({
-      phoneId: agent.whatsappPhoneId,
-      token: agent.whatsappToken,
-      fileBuffer: buffer,
-      filename: fileName,
-      mimeType: fileType,
-    })
-
-    if (!uploadResult.success || !uploadResult.mediaId) {
-      const errMsg = uploadResult.error?.error?.message || "فشل رفع الملف"
-      console.error("❌ Media upload failed:", errMsg)
-      return errorResponse(errMsg, 500)
-    }
-
-    const { mediaId } = uploadResult
-    console.log(`✅ Media uploaded (ID: ${mediaId})`)
-
-    // Send via WhatsApp
+    // ── Send via WhatsApp ──
     let sentResult
-    if (mediaType === "image") {
-      sentResult = await sendWhatsAppMessage({
-        phoneId: agent.whatsappPhoneId,
-        token: agent.whatsappToken,
-        to: normalizedPhone,
-        type: "image",
-        imageId: mediaId,
-        message: caption || undefined,
-      })
-    } else if (mediaType === "video") {
-      sentResult = await sendWhatsAppMessage({
-        phoneId: agent.whatsappPhoneId,
-        token: agent.whatsappToken,
-        to: normalizedPhone,
-        type: "video",
-        videoId: mediaId,
-        message: caption || undefined,
-      })
+    let mediaId = null  // ✅ Declare mediaId at top level for both paths
+
+    if (mediaUrl) {
+      // URL path — send Cloudinary link directly to WhatsApp (no upload needed)
+      if (mediaType === "image") {
+        sentResult = await sendWhatsAppMessage({
+          phoneId: agent.whatsappPhoneId, token: agent.whatsappToken,
+          to: normalizedPhone, type: "image", message: mediaUrl,
+        })
+      } else if (mediaType === "video") {
+        sentResult = await sendWhatsAppMessage({
+          phoneId: agent.whatsappPhoneId, token: agent.whatsappToken,
+          to: normalizedPhone, type: "video", videoUrl: mediaUrl,
+        })
+      } else {
+        sentResult = await sendWhatsAppMessage({
+          phoneId: agent.whatsappPhoneId, token: agent.whatsappToken,
+          to: normalizedPhone, type: "document",
+          document: { link: mediaUrl, filename: fileName },
+        })
+      }
     } else {
-      sentResult = await sendWhatsAppMessage({
-        phoneId: agent.whatsappPhoneId,
-        token: agent.whatsappToken,
-        to: normalizedPhone,
-        type: "document",
-        document: { id: mediaId, filename: fileName },
-        message: caption || undefined,
+      // File path — upload to WhatsApp Media first, then send
+      const buffer = Buffer.from(await file.arrayBuffer())
+      if (!buffer || buffer.length < 100) {
+        return errorResponse("الملف فارغ أو غير صالح", 400)
+      }
+
+      const uploadResult = await uploadWhatsAppMedia({
+        phoneId: agent.whatsappPhoneId, token: agent.whatsappToken,
+        fileBuffer: buffer, filename: fileName, mimeType: fileType,
       })
+      if (!uploadResult.success || !uploadResult.mediaId) {
+        const errMsg = uploadResult.error?.error?.message || "فشل رفع الملف"
+        console.error("❌ Media upload failed:", errMsg)
+        return errorResponse(errMsg, 500)
+      }
+
+      mediaId = uploadResult.mediaId  // ✅ Use existing mediaId variable
+      console.log(`✅ Media uploaded (ID: ${mediaId})`)
+
+      if (mediaType === "image") {
+        sentResult = await sendWhatsAppMessage({
+          phoneId: agent.whatsappPhoneId, token: agent.whatsappToken,
+          to: normalizedPhone, type: "image", imageId: mediaId,
+        })
+      } else if (mediaType === "video") {
+        sentResult = await sendWhatsAppMessage({
+          phoneId: agent.whatsappPhoneId, token: agent.whatsappToken,
+          to: normalizedPhone, type: "video", videoId: mediaId,
+        })
+      } else {
+        sentResult = await sendWhatsAppMessage({
+          phoneId: agent.whatsappPhoneId, token: agent.whatsappToken,
+          to: normalizedPhone, type: "document",
+          document: { id: mediaId, filename: fileName },
+        })
+      }
     }
 
     if (!sentResult.success) {
@@ -153,19 +172,18 @@ export async function POST(request, { params }) {
 
     // Save to DB
     const content = mediaType === "image"
-      ? `[صورة]${caption ? ` ${caption}` : ""}`
+      ? "[صورة]"
       : mediaType === "video"
-      ? `[فيديو]${caption ? ` ${caption}` : ""}`
-      : `[مستند: ${fileName}]${caption ? ` ${caption}` : ""}`
+      ? "[فيديو]"
+      : `[مستند: ${fileName}]`
 
-    // Save message + update conversation in parallel
     const [saved] = await Promise.all([
       prisma.message.create({
-        data: {
-          conversationId: id,
-          role: "AGENT",
+        data: { 
+          conversationId: id, 
+          role: "AGENT", 
           content,
-          whatsappMediaId: mediaId,
+          whatsappMediaId: mediaId || null  // ✅ Save mediaId for images/videos
         }
       }),
       prisma.conversation.update({
